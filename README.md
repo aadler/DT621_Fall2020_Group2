@@ -1,5 +1,5 @@
-% CUNY DT 621 Fall 2020 Critical Group 2
-# Members
+# CUNY DT 621 Fall 2020 Critical Group 2
+## Members
  * Jeff Shamp
  * Bryan Persaud
  * John Kellogg
@@ -7,7 +7,7 @@
  * Samantha Deokinanan
  * Avraham Adler
  
-# Assignments
+## Assignments
 TBD
  
  
