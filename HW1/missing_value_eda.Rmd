@@ -1,0 +1,177 @@
+---
+title: "621 - HW1 -EDA"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Moneyball EDA
+
+Initial exploration into the moneyball data sets. 
+
+```{r}
+sessionInfo()
+```
+
+
+```{r}
+library(tidyverse)
+train_df<- 
+  read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv?token=AJP53VW2N3ER7LBQPZRTCN27J6ZTQ")
+```
+
+
+```{r}
+glimpse(train_df)
+```
+
+```{r}
+train_df %>%
+  filter(complete.cases(train_df) == TRUE) %>%
+  count() %>%
+  rename("complete cases"= n) %>%
+  bind_cols(
+    train_df %>%
+    select(TARGET_WINS) %>%
+    count() %>%
+    rename("target count" = n)
+  )
+```
+
+Lots of not complete cases. Let's look at percent `NA`.
+
+```{r}
+glimpse(
+  train_df %>%
+  summarize_all(funs(sum(is.na(.))/length(.)))
+) 
+```
+
+This is good news, it seems. The most missing values come from what we would expect; hit-by-pitch, caught stealing, double plays. We will need to see about columns with zeros and `NA` values. 
+
+```{r}
+missing_df<-
+  train_df %>%
+  select(TEAM_BATTING_SO, TEAM_BASERUN_SB, TEAM_BASERUN_CS,
+         TEAM_BATTING_HBP, TEAM_PITCHING_SO, TEAM_FIELDING_DP)
+
+# Are there zeros and NAs in the same columns with missing values
+missing_df %>%
+  summarize_all(funs(length(which(. ==0))))
+```
+
+For the three most missing columns (HBP, CS, DP) we have neither one or zero, zeros. Seems reasonable that for these columns `NA` values can be zeros as these are rare events and they don't seem to be tallied as a zero. Alternatively, these stats just might not have been counted back in the day so those team season stats are entered as `NA`. 
+
+For `TEAM_BATTING_SO` and `..PITCHING_SO` there are 20 zero values and 99 `NA`. **It seems completely unreasonable** to have zero strike outs in a season or to **not** record them. 
+
+### Impute Strategy 
+
+Given some issues outlined above, it will likely be helpful to impute some of the values. For that, distribution of the known values are displayed below. Red vertical line is the mean value (normality assumed, some aren't). 
+
+There seem to be good candidates for imputation by mean/median given the variables distribution (normal, binomial, geometric, etc). 
+
+```{r}
+missing_df %>%
+  ggplot(aes(TEAM_BATTING_HBP)) +
+  geom_histogram(na.rm = TRUE, binwidth = 1) +
+   geom_vline(xintercept = mean(
+              missing_df$TEAM_BATTING_HBP,
+              na.rm = TRUE), color="red") 
+
+missing_df %>%
+  ggplot(aes(TEAM_BASERUN_CS)) +
+  geom_histogram(na.rm = TRUE, binwidth = 1) +
+  geom_vline(xintercept = mean(
+              missing_df$TEAM_BASERUN_CS,
+              na.rm = TRUE), color="red")
+
+missing_df %>%
+  ggplot(aes(TEAM_FIELDING_DP)) +
+  geom_histogram(na.rm=TRUE, binwidth = 1) +
+  geom_vline(xintercept = mean(
+              missing_df$TEAM_FIELDING_DP,
+              na.rm = TRUE), color="red")
+
+missing_df %>%
+  ggplot(aes(TEAM_BATTING_SO)) +
+  geom_histogram(na.rm=TRUE, binwidth = 1) +
+  geom_vline(xintercept = mean(
+              missing_df$TEAM_BATTING_SO,
+              na.rm = TRUE), color="red")
+
+missing_df %>%
+  ggplot(aes(TEAM_BASERUN_SB)) +
+  geom_histogram(na.rm = TRUE, binwidth = 1) +
+   geom_vline(xintercept = mean(
+              missing_df$TEAM_BASERUN_SB,
+              na.rm = TRUE), color="red")
+
+missing_df %>%
+  ggplot(aes(TEAM_PITCHING_SO)) +
+  geom_histogram(na.rm = TRUE, binwidth = 1) +
+   geom_vline(xintercept = mean(
+              missing_df$TEAM_PITCHING_SO,
+              na.rm = TRUE), color="red")
+```
+
+May also be easy to regress missing values by association. 
+
+```{r}
+missing_df %>%
+  na.omit() %>%
+  ggplot(aes(TEAM_BASERUN_SB, TEAM_BASERUN_CS)) +
+  geom_point()
+```
+
+## Outliers
+
+`TEAM_PITCHING_SO` seemed to have a compressed distribution. Checking that out. 
+
+```{r}
+missing_df %>%
+  select(TEAM_PITCHING_SO) %>%
+  summary()
+
+missing_df %>%
+  ggplot(aes(TEAM_PITCHING_SO)) +
+  geom_boxplot(na.rm = TRUE)
+```
+
+No way. The MLB team pitching strikeout record is 1450 and set in 2014 (CLE). Also 20k SO in a season is 123 SO per game for all 162 games. There are a minimum of 27 at-bats per game and most teams average ~35 at-bats. 
+
+
+```{r}
+missing_df %>%
+  select(TEAM_PITCHING_SO) %>%
+  na.omit() %>%
+  summarize(iqr = IQR(TEAM_PITCHING_SO)) %>%
+  bind_cols(
+            missing_df %>% 
+            select(TEAM_PITCHING_SO)
+            )  %>%
+  filter(
+    TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO,
+                                probs=c(0.25), 
+                                na.rm = TRUE) - 1.5*iqr, 
+    TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, 
+                                probs=c(0.75), 
+                                na.rm=TRUE) + 1.5*iqr
+        ) %>%
+  ggplot(aes(TEAM_PITCHING_SO)) +
+  geom_boxplot(fill="lightblue3")
+
+```
+
+That's better. The record values are still outliers on the plot, but not totally out of reason. 
+
+
+
+
+
+
+
+
+
+
