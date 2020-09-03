@@ -19,13 +19,15 @@ sessionInfo()
 ```{r}
 library(tidyverse)
 train_df<- 
-  read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv?token=AJP53VW2N3ER7LBQPZRTCN27J6ZTQ")
+  read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv?token=AJP53VTYKQ4BKNZQERSMBYK7KBD52")
 ```
 
 
 ```{r}
 glimpse(train_df)
 ```
+
+### Missing Values
 
 ```{r}
 train_df %>%
@@ -62,15 +64,16 @@ missing_df %>%
   summarize_all(funs(length(which(. ==0))))
 ```
 
-For the three most missing columns (HBP, CS, DP) we have neither one or zero, zeros. Seems reasonable that for these columns `NA` values can be zeros as these are rare events and they don't seem to be tallied as a zero. Alternatively, these stats just might not have been counted back in the day so those team season stats are entered as `NA`. 
+For the three most missing columns (HBP, CS, DP) we have neither one or zero, zeros. These stats just might not have been counted back-in-the-day so those team season stats are entered as `NA`. 
 
-For `TEAM_BATTING_SO` and `..PITCHING_SO` there are 20 zero values and 99 `NA`. **It seems completely unreasonable** to have zero strike outs in a season or to **not** record them. 
+For `TEAM_BATTING_SO` and `..PITCHING_SO` there are 20 zero values and 99 `NA`. **It seems completely unreasonable** to have zero strike outs in a season. It seems wild to **not** record them. 
 
 ### Impute Strategy 
 
 Given some issues outlined above, it will likely be helpful to impute some of the values. For that, distribution of the known values are displayed below. Red vertical line is the mean value (normality assumed, some aren't). 
 
-There seem to be good candidates for imputation by mean/median given the variables distribution (normal, binomial, geometric, etc). 
+There seem to be good candidates for imputation by mean/median given the variables distribution (normal, binomial, geometric, etc). For all of the variables with missing values a simple imputation strategy will cause a large "pile up" of values where imputation was done. For example, `TEAM_BASERUN_SB` is only 5.75% missing with 131 missing observations, but the largest count total for any given value is 20. So if we impute via median value, we will have an order magnitude more values where we filled compared to the values present in the data. 
+
 
 ```{r}
 missing_df %>%
@@ -116,7 +119,7 @@ missing_df %>%
               na.rm = TRUE), color="red")
 ```
 
-May also be easy to regress missing values by association. 
+May also be easy (or better) to regress missing values by association.  
 
 ```{r}
 missing_df %>%
@@ -124,6 +127,7 @@ missing_df %>%
   ggplot(aes(TEAM_BASERUN_SB, TEAM_BASERUN_CS)) +
   geom_point()
 ```
+
 
 ## Outliers
 
@@ -139,11 +143,12 @@ missing_df %>%
   geom_boxplot(na.rm = TRUE)
 ```
 
-No way. The MLB team pitching strikeout record is 1450 and set in 2014 (CLE). Also 20k SO in a season is 123 SO per game for all 162 games. There are a minimum of 27 at-bats per game and most teams average ~35 at-bats. 
+No way. The MLB team pitching strikeout record is 1450 and set in 2014 (CLE). Also 20k SO in a season is 123 SO per game for all 162 games. There are a minimum of 27 at-bats per game and most teams average ~35 at-bats, making 123 SOs impossible. 
 
 
 ```{r}
-missing_df %>%
+so_pitch_outliers<-
+  missing_df %>%
   select(TEAM_PITCHING_SO) %>%
   na.omit() %>%
   summarize(iqr = IQR(TEAM_PITCHING_SO)) %>%
@@ -152,16 +157,23 @@ missing_df %>%
             select(TEAM_PITCHING_SO)
             )  %>%
   filter(
+    # Used median and IQR for outlier removal. 
+    # mean and std could also work.
     TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO,
                                 probs=c(0.25), 
                                 na.rm = TRUE) - 1.5*iqr, 
     TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, 
                                 probs=c(0.75), 
                                 na.rm=TRUE) + 1.5*iqr
-        ) %>%
+        ) 
+
+so_pitch_outliers %>%
   ggplot(aes(TEAM_PITCHING_SO)) +
   geom_boxplot(fill="lightblue3")
 
+so_pitch_outliers %>%
+  ggplot(aes(TEAM_PITCHING_SO)) +
+  geom_histogram(binwidth=5)
 ```
 
 That's better. The record values are still outliers on the plot, but not totally out of reason. 
