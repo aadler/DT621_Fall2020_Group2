@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 ```{r loadPackages}
+library(caret)
 library(corrplot)
 library(RColorBrewer)
 library(ggplot2)
@@ -54,7 +55,8 @@ The table below shows all variables with missing values:
 missingObs <- MBmelt[, .(Missing = sum(is.na(Value)),
                          Percentage = sum(is.na(Value)) / length(Value)),
                      keyby = Metric][Missing > 0][order(-Missing)]
-knitr::kable(missingObs, digits = 3L)
+knitr::kable(missingObs, digits = 3L,
+caption = 'Training Data with Missing Observations')
 ```
 
 Most variables are present in their entirety. Some have a few observations
@@ -90,7 +92,8 @@ statTable <- MBmelt[, .(Min = min(Value, na.rm = TRUE),
                         Mean = mean(Value, na.rm = TRUE),
                         StDev = sd(Value, na.rm = TRUE),
                         IQR = IQR(Value, na.rm = TRUE)), keyby = Metric]
-knitr::kable(statTable, digits = 2L)
+knitr::kable(statTable, digits = 2L,
+             caption = 'Training Data Summary Statistics')
 ```
 
 ```{r boxPlot1, fig.width = 7}
@@ -153,6 +156,65 @@ are more a function of fielding than batting?
 Regardless, there are some correlations in the data, but nothing that screams
 for immediate action.
 
+# Data Preperation
+## Task
+Describe how you have transformed the data by changing the original variables or
+creating new variables. If you did transform the data or create new variables,
+discuss why you did this. Here are some possible transformations:
+
+  a. Fix missing values (maybe with a Mean or Median value)
+  b. Create flags to suggest if a variable was missing
+  c. Transform data by putting it into buckets
+  d. Mathematical transforms such as log or square root(or use Box-Cox)
+  e. Combine variables (such as ratios or adding or multiplying) to create new
+  variables
+  
+## Analysis
+The `caret` package for R is the gold-standard catch-all interface for machine
+learning techniques for those not using the tidyverse. Otherwise, the same
+author's `tidymodels` package may be used as well. When using `caret`, almost
+all of the following imputation and transformation is done as pre-processing
+to the model. For the purposes of this homework, they are being performed
+manually to demonstrate understanding.
+
+### Imputation
+Since we are restricting ourselves to the world of the simple linear regression
+model, it makes sense to use a Z-transformation to standardize the models.
+Prior to this, the missing variables should be imputed. Looking at the summary
+statistics table, the median is not that far off of the mean in most cases with
+the exceptions of `TEAM_BASERUN_SB` and `TEAM_BATTING_SO`. Therefore, for an
+initial imputation, we will use the mean so that the overall mean is unaffected
+for the Z-transform. This **will** artificially reduce the SD, however. We could
+address that by calculating the mean and SD, *prior* to imputation. We will not
+do so now for simplicity. 
+
+```{r imputeMean}
+MBmelt[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+       keyby = Metric]
+```
+
+### Transformations
+The first transform applied will be centering and scaling, as discussed above.
+
+```{r centerScale}
+MBmelt[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+```
+
+At this point we would hope to see Gaussian-looking densities.
+```{r plotScaled}
+ggplot(MBmelt, aes(x = Value)) + geom_density() +
+  facet_wrap(~ Metric, scales = 'free')
+```
+
+Some of the variables, like `TEAM_BATTING_2B` or `TEAM_BATTING_SO` show
+Gaussian-like behavior, with some allowances for the discrete nature of the
+input data (those wiggles at the crest of `TEAM_BATTING_SO` for example). Others
+are classic right tailed (exponential/gamma-esque) such as `TEAM_FIELDING_E` or
+`TEAM_BATTING_3B`. Still others are clearly multimodal. Then there are the
+weird spike-like ones as well.
+
+
+
 # References
 
  * Friendly, Michael (2002) Corrgrams: Exploratory displays for correlation
@@ -176,4 +238,8 @@ They are reproduced in the appendix for review and comment.
 ```{r boxPlot2, echo=TRUE, eval=FALSE}
 ```
 ```{r corrgram, echo=TRUE, eval=FALSE}
+```
+```{r imputeMean, echo=TRUE, eval=FALSE}
+```
+```{r centerScale, echo=TRUE, eval=FALSE}
 ```
