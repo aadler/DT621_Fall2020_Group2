@@ -1,14 +1,19 @@
 ---
-title: "Data 621---HW1---Regression Model Pt 2"
-author: "Group 1"
+title: "Data 621---HW1---Regression Model---Version 2"
+author: "Group 2"
 date: "9/8/2020"
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-library(data.table)
+```
+```{r loadPackages}
+library(corrplot)
+library(RColorBrewer)
 library(ggplot2)
+library(scales)
+library(data.table)
 ```
 
 # Data Exploration
@@ -43,12 +48,7 @@ The data is composed of `r n` observations of `r k` fields, all of which are
 discrete numerical variables.
 
 ### Missing Observations
-Most variables are present in their entirety. Some have a few observations
-missing that may be addressed through imputation. Unfortunately,
-`TEAM_BATTING_HBP`---the metric representing batters getting first base awarded
-due to being hit by a pitch---is missing almost all observations, it is most
-prudent to **exclude** from the analysis. The table below shows all variables
-with missing values
+The table below shows all variables with missing values:
 
 ```{r missingTable}
 missingObs <- MBmelt[, .(Missing = sum(is.na(Value)),
@@ -57,13 +57,28 @@ missingObs <- MBmelt[, .(Missing = sum(is.na(Value)),
 knitr::kable(missingObs, digits = 3L)
 ```
 
-\clearpage
+Most variables are present in their entirety. Some have a few observations
+missing that may be addressed through imputation. Unfortunately,
+`TEAM_BATTING_HBP`---the metric representing batters getting first base awarded
+due to being hit by a pitch---is missing almost all observations. It is prudent
+to remove that variable from the analysis. It is also probably prudent to
+remove `TEAM_BASERUN_CS` as it is missing more than one-third of the time. The
+variables missing less than 10% of the time may be imputed using median or
+k-means clustering. Whether `TEAM_FIELDING_DP` will be removed or imputed will
+be a decision made later on in the analysis.
+
 ### Data Distribution
 The table and plots below give an overview as to the distribution of the
 variables.
 
 ```{r summaryTable}
+# Removing 'TEAM_BATTING_HBP' and index from wide data. Easier to calculate
+# correlations later on using wide data.
+MB[, `:=`(INDEX = NULL, TEAM_BATTING_HBP = NULL)]
+
+# Removing 'TEAM_BATTING_HBP' from tall data
 MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HBP']
+
 # Casting to double since medians and quartiles may return non-integer values.
 MBmelt[, Value := as.double(Value)]
 
@@ -78,8 +93,9 @@ statTable <- MBmelt[, .(Min = min(Value, na.rm = TRUE),
 knitr::kable(statTable, digits = 2L)
 ```
 
-```{r boxPlot1}
-ggplot(MBmelt, aes(x = Value, y = Metric)) + geom_boxplot()
+```{r boxPlot1, fig.width = 7}
+ggplot(MBmelt, aes(x = Value, y = Metric)) + geom_boxplot() +
+  scale_x_continuous(labels = comma)
 ```
 
 One immediate observation from both the table and the boxplots, is that the
@@ -87,9 +103,9 @@ range for `TEAM_PITCHING_H` is one to two orders of magnitude greater than that
 of the other variables. Below are boxplots of the remaining variables for a
 better view, followed by a histogram of `TEAM_PITCHING_H`.
 
-```{r boxPlot2}
+```{r boxPlot2, fig.width = 7}
 ggplot(MBmelt[Metric != 'TEAM_PITCHING_H'], aes(x = Value, y = Metric)) +
-  geom_boxplot()
+  geom_boxplot() + scale_x_continuous(labels = comma)
 
 # Use the Freedman-Diaconis rule for historgram bin widths instead of ggplot
 # defaults
@@ -100,16 +116,55 @@ FreedmanDiaconis <- function(x) {
 
 ggplot(MBmelt[Metric == 'TEAM_PITCHING_H'], aes(x = Value)) +
   geom_histogram(binwidth = FreedmanDiaconis) +
-  scale_x_continuous(labels = scales::label_comma())
+  scale_x_continuous(labels = comma)
 ```
 
 It is very clear that `TEAM_PITCHING_H` is extremely right tailed and may be a
 prime subject for a transformation.
 
+### Correlations
+A quick way to identify correlations between variables is through a
+corrgram.[^1] In the corrgram below, blue represents positive correlation and
+red represents negative correlation, as shown in the color bar. The shape of the
+images in each cell reflect the scatterplots of the features with each other.
+The main diagonal, therefore, are all upward sloping blue lines, as each feature
+is perfectly correlated with itself.
+
+[^1]:This is the proper name for a multicolored matrix representation of a
+correlation matrix (Friendly 2002). Correlelograms refer to the time-series
+plots used to check for auto-correlation. The terms have been conflated, though.
+
+```{r corrgram, fig.height=6}
+MBcor <- cor(MB, method = 'pearson', use = 'pairwise.complete.obs')
+corrplot(MBcor, 'ellipse', type = 'lower', order = 'hclust',
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+
+Most of the ellipses are pretty wide, so there is not *much* correlation, but
+there are some clear clusters. For example, `TEAM_FIELDING_E` and 
+`TEAM_BATTING_3B` are both negatively correlated with `TEAM_BATTING_SO` and
+`TEAM_BATTING_HR`. As regards `TEAM_FIELDING_E`, a hypothesis is that if batters
+are either hitting home runs or striking out, *they are***not***getting on base*.
+Therefore there are fewer opportunity for fielding errors. Why triples are 
+negatively correlated with HRs or SOs is not as logical. There is a positive
+correlation between triples and fielding errors of around 51%. Perhaps triples
+are more a function of fielding than batting?
+
+Regardless, there are some correlations in the data, but nothing that screams
+for immediate action.
+
+# References
+
+ * Friendly, Michael (2002) Corrgrams: Exploratory displays for correlation
+ matrices, *The American Statistician*, 56:4, 316-324, DOI: 10.1198/000313002533,
+ http://euclid.psych.yorku.ca/datavis/papers/corrgram.pdf
+
 # Appendix
 The code chunks below represent the code called in order during the analysis.
 They are reproduced in the appendix for review and comment.
 
+```{r loadPackages, echo=TRUE, eval=FALSE}
+```
 ```{r readData, echo=TRUE, eval=FALSE}
 ```
 ```{r missingTable, echo=TRUE, eval=FALSE}
@@ -119,4 +174,6 @@ They are reproduced in the appendix for review and comment.
 ```{r boxPlot1, echo=TRUE, eval=FALSE}
 ```
 ```{r boxPlot2, echo=TRUE, eval=FALSE}
+```
+```{r corrgram, echo=TRUE, eval=FALSE}
 ```
