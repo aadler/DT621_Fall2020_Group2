@@ -264,12 +264,8 @@ is handled by the software, such as the `caret` package. For the purposes of
 pedagogy, we will make some hand-selected transforms.
 
 ```{r boxCox}
-boxCox <- function(x, l) {
-  if (l == 0) {
-    log(x)
-  } else {
-    (x ^ l - 1) / l
-  }
+BxCox <- function(x, l) {
+  ifelse(l == 0, log(x), (x ^ l - 1) / l)
 }
 
 # All of these values determined by visual inspection of resulting density
@@ -277,16 +273,69 @@ boxCox <- function(x, l) {
 # perhaps minimizing the square of the skewness and *excess* kurtosis, both of
 # which are 0 in the standard normal distribution.
 
-TEAM_PITCHING_H <- -2.5
-TEAM_FIELDING_E <- -0.5
-TEAM_BASERUN_SB <- 0
-TEAM_PITCHING_HR <- 0.6
-TEAM_PITCHING_BB <- -0.15
-TEAM_PITCHING_SO <- -0.35
+BCL <- data.table(Metric = c('TEAM_PITCHING_H', 'TEAM_FIELDING_E',
+                             'TEAM_BASERUN_SB', 'TEAM_PITCHING_HR',
+                             'TEAM_PITCHING_BB', 'TEAM_PITCHING_SO',
+                             'TEAM_BATTING_3B'),
+                  Lambda = c(-2.5, -0.5, 0, 0.6, -0.15, -0.35, 0))
+setkey(BCL, Metric)
+knitr::kable(BCL, digits = 2L, caption = 'Hand-selected Box-Cox Lambdas')
 
+# Left join MBmelt to BCL. 
+MBmelt <- BCL[MBmelt]
+
+# Transform data where there are selected lambdas
+MBmelt[!is.na(Lambda), Value := BxCox(Value, Lambda)]
+
+# Remove TEAM_BATTING_HR
+
+MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HR']
+
+# Plot results
+ggplot(MBmelt, aes(x = Value)) + geom_density() +
+  facet_wrap(~ Metric, scales = 'free') +
+  ggtitle(label = 'Kernel-Smoothed Densities of Box-Cox Transformed Data')
 ```
 
+Most of the variables are now closer to a Gaussian distribution. Also note we
+have removed `TEAM_BATTING_HR` from the data. Now the data needs to be rescaled
+and recentered.
 
+```{r reScale}
+MBmeltSC <- copy(MBmelt)
+MBmeltSC[, Lambda := NULL]
+MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
+                          keyby = Metric]
+
+MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBmeltUnscale, digits = 2L,
+             caption = 'Post-Transform Data Means and SDs')
+```
+
+Unfortunately, the scaling introduces infinities, as most of the Box-Cox lamdas
+are non-positive, which transforms 0 into infinity. These were converted to NAs
+for the purposes of imputation, after which scaling and centering will be done
+again. This is the danger of too many transforms. Each one induces a "stress" on
+the relationship between the independent and dependent variables. At what point
+does that relationship fracture?
+
+```{r reImputeThenScale}
+MBmeltSC <- copy(MBmelt)
+MBmeltSC[, Lambda := NULL]
+# Remove infinities
+MBmeltSC[, Value := ifelse(is.infinite(Value), NA, Value)]
+# Center and Scale
+MBmeltSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+       keyby = Metric]
+MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
+                          keyby = Metric]
+MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBmeltUnscale, digits = 2L,
+             caption = 'Final Post-Transform Data Means and SDs')
+ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
+  facet_wrap(~ Metric, scales = 'free') +
+  ggtitle(label = 'Kernel-Smoothed Densities of Scaled Box-Cox Transformed Data')
+```
 # Build Models
 ## Task
 Using the training data set, build at least three different multiple linear
@@ -302,7 +351,7 @@ coefficient is negative (suggesting that the team would lose more games), then
 that needs to be discussed. Are you keeping the model even though it is counter
 intuitive? Why? The boss needs to know.
 
-
+## Analysis
 
 
 # References
@@ -334,4 +383,10 @@ They are reproduced in the appendix for review and comment.
 ```{r centerScale, echo=TRUE, eval=FALSE}
 ```
 ```{r plotScaled, echo=TRUE, eval=FALSE}
+```
+```{r boxCox, echo=TRUE, eval=FALSE}
+```
+```{r reScale, echo=TRUE, eval=FALSE}
+```
+```{r reImputeThenScale, echo=TRUE, eval=FALSE}
 ```
