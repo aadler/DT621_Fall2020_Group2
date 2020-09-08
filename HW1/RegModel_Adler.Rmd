@@ -1,0 +1,122 @@
+---
+title: "Data 621---HW1---Regression Model Pt 2"
+author: "Group 1"
+date: "9/8/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(data.table)
+library(ggplot2)
+```
+
+# Data Exploration
+## Task
+Describe the size and the variables in the moneyballtraining data set. Consider
+that too much detail will cause a manager to lose interest while too little
+detail will make the manager consider that you aren’t doing your job. Some
+suggestions are given below. Please do NOT treat this as a check list of things
+to do to complete the assignment. You should have your own thoughts on what to
+tell the boss. These are just ideas.
+
+  a. Mean / Standard Deviation / Median
+  b. Bar Chart or Box Plot of the data
+  c. Is the data correlated to the target variable (or to other variables?)
+  d. Are any of the variables missing and need to be imputed “fixed”?
+  
+## Analysis
+```{r readData}
+MB <- fread('./data/moneyball-training-data.csv')
+n <- dim(MB)[[1]]
+k <- dim(MB)[[2]]
+
+# Meltng data from wide to narrow for munging & ggplot; simultaneously removing
+# INDEX.
+MBmelt <- melt(MB[, -1L], measure.vars = names(MB[, -1L]),
+               variable.name = 'Metric', value.name = 'Value',
+               variable.factor = FALSE)
+```
+
+### Description
+The data is composed of `r n` observations of `r k` fields, all of which are
+discrete numerical variables.
+
+### Missing Observations
+Most variables are present in their entirety. Some have a few observations
+missing that may be addressed through imputation. Unfortunately,
+`TEAM_BATTING_HBP`---the metric representing batters getting first base awarded
+due to being hit by a pitch---is missing almost all observations, it is most
+prudent to **exclude** from the analysis. The table below shows all variables
+with missing values
+
+```{r missingTable}
+missingObs <- MBmelt[, .(Missing = sum(is.na(Value)),
+                         Percentage = sum(is.na(Value)) / length(Value)),
+                     keyby = Metric][Missing > 0][order(-Missing)]
+knitr::kable(missingObs, digits = 3L)
+```
+
+\clearpage
+### Data Distribution
+The table and plots below give an overview as to the distribution of the
+variables.
+
+```{r summaryTable}
+MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HBP']
+# Casting to double since medians and quartiles may return non-integer values.
+MBmelt[, Value := as.double(Value)]
+
+statTable <- MBmelt[, .(Min = min(Value, na.rm = TRUE),
+                        Q1 = quantile(Value, 0.25, na.rm = TRUE),
+                        Median = median(Value, na.rm = TRUE),
+                        Q3 = round(quantile(Value, 0.75, na.rm = TRUE)),
+                        Max = max(Value, na.rm = TRUE),
+                        Mean = mean(Value, na.rm = TRUE),
+                        StDev = sd(Value, na.rm = TRUE),
+                        IQR = IQR(Value, na.rm = TRUE)), keyby = Metric]
+knitr::kable(statTable, digits = 2L)
+```
+
+```{r boxPlot1}
+ggplot(MBmelt, aes(x = Value, y = Metric)) + geom_boxplot()
+```
+
+One immediate observation from both the table and the boxplots, is that the
+range for `TEAM_PITCHING_H` is one to two orders of magnitude greater than that
+of the other variables. Below are boxplots of the remaining variables for a
+better view, followed by a histogram of `TEAM_PITCHING_H`.
+
+```{r boxPlot2}
+ggplot(MBmelt[Metric != 'TEAM_PITCHING_H'], aes(x = Value, y = Metric)) +
+  geom_boxplot()
+
+# Use the Freedman-Diaconis rule for historgram bin widths instead of ggplot
+# defaults
+
+FreedmanDiaconis <- function(x) {
+  2 * IQR(x, na.rm = TRUE) / (length(x) ^ (1 / 3))
+}
+
+ggplot(MBmelt[Metric == 'TEAM_PITCHING_H'], aes(x = Value)) +
+  geom_histogram(binwidth = FreedmanDiaconis) +
+  scale_x_continuous(labels = scales::label_comma())
+```
+
+It is very clear that `TEAM_PITCHING_H` is extremely right tailed and may be a
+prime subject for a transformation.
+
+# Appendix
+The code chunks below represent the code called in order during the analysis.
+They are reproduced in the appendix for review and comment.
+
+```{r readData, echo=TRUE, eval=FALSE}
+```
+```{r missingTable, echo=TRUE, eval=FALSE}
+```
+```{r summaryTable, echo=TRUE, eval=FALSE}
+```
+```{r boxPlot1, echo=TRUE, eval=FALSE}
+```
+```{r boxPlot2, echo=TRUE, eval=FALSE}
+```
