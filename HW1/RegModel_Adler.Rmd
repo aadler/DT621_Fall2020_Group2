@@ -143,8 +143,15 @@ corrplot(MBcor, 'ellipse', type = 'lower', order = 'hclust',
          col=brewer.pal(n=8, name="RdYlBu"))
 ```
 
-Most of the ellipses are pretty wide, so there is not *much* correlation, but
-there are some clear clusters. For example, `TEAM_FIELDING_E` and 
+Most of the ellipses are pretty wide, so there is not *much* correlation. There
+is one notable exception. `TEAM_BATTING_HR` is about **97%** correlated with
+`TEAM_PITCHING_HR`, as the individual HR directly affects the single determinant
+of both wins and losses---the score! There is no other correlation greater than
+67%. That one is `TEAM_FIELDING_E` with `TEAM_PITCHING_H` which stands to reason,
+as one can only be charged with an error if the ball is in play, which is also
+the only way to get a hit.
+
+There are some interesting clusters. For example, `TEAM_FIELDING_E` and 
 `TEAM_BATTING_3B` are both negatively correlated with `TEAM_BATTING_SO` and
 `TEAM_BATTING_HR`. As regards `TEAM_FIELDING_E`, a hypothesis is that if batters
 are either hitting home runs or striking out, *they are***not***getting on base*.
@@ -153,8 +160,9 @@ negatively correlated with HRs or SOs is not as logical. There is a positive
 correlation between triples and fielding errors of around 51%. Perhaps triples
 are more a function of fielding than batting?
 
-Regardless, there are some correlations in the data, but nothing that screams
-for immediate action.
+Our suggestion would be to use only `TEAM_PITCHING_HR` as that has a slightly
+higher correlation with target wins, and leave all the other variables in the
+analysis.
 
 # Data Preperation
 ## Task
@@ -206,19 +214,33 @@ MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
 MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
 knitr::kable(MBmeltUnscale, digits = 2L, caption = 'Data Means and SDs')
 ```
-
-At this point we would hope to see Gaussian-looking densities.
-```{r plotScaled}
+```{r plotScaled, fig.width=7}
+ggplot(MBmelt, aes(x = Value)) + geom_density() +
+  facet_wrap(~ Metric, scales = 'free') +
+  ggtitle(label = 'Kernel-Smoothed Densities of Raw Data')
 ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
-  facet_wrap(~ Metric, scales = 'free')
+  facet_wrap(~ Metric, scales = 'free') +
+  ggtitle(label = 'Kernel-Smoothed Densities of Centered and Scaled Data')
 ```
+
+As expected, centering and scaling did not change the shape of the
+distributions. As an aside, the relationship we saw between `TEAM_PITCHING_HR`
+and `TEAM_BATTING_HR` above remains rather clear in the plots.
 
 Some of the variables, like `TEAM_BATTING_2B` or `TEAM_BATTING_SO` show
 Gaussian-like behavior, with some allowances for the discrete nature of the
 input data (those wiggles at the crest of `TEAM_BATTING_SO` for example). Others
-are classic right tailed (exponential/gamma-esque) such as `TEAM_FIELDING_E` or
-`TEAM_BATTING_3B`. Still others are clearly multimodal. Then there are the
-weird spike-like ones as well.
+are classic right tailed (exponential/gamma-esque) such as `TEAM_FIELDING_E`
+or `TEAM_BATTING_3B`.
+
+Still others are clearly multimodal. Variables like `TEAM_BATTING_HR` and
+`TEAM_PITCHING_HR` indicate the existence of some clustering of better and worse
+players. With these two, As said above, the "wiggles" in `TEAM_BATTING_SO` and
+`TEAM_BASERUN_SB` may be more artifacts of discrete data than indications of
+multimodality.
+
+Then there is `TEAM_BASERUN_CS` which has an extreme spike at one point and then
+some outliers on either side.
 
 All of this indicates that there will need to be further processing.
 
@@ -233,11 +255,52 @@ y(\lambda) =
 \end{cases}
 \]
 
-Unfortunately, this is only defined on positive data. Therefore, the unscaled
-data will need to be used. While in theory it would be nice to transform each
-column as best possible, that makes for very difficult reconstruction. At this
-point, we will pivot to continuing the analysis using the `caret` package which
-takes care of a lot of the computational issues.
+with \(\lambda\) usually allowed to range between -5 and 5. Unfortunately, this
+is only defined on positive data. Therefore, the unscaled data will need to be
+used and then subsequently rescaled.
+
+As mentioned in the introduction, most of the actual computation of transforms
+is handled by the software, such as the `caret` package. For the purposes of
+pedagogy, we will make some hand-selected transforms.
+
+```{r boxCox}
+boxCox <- function(x, l) {
+  if (l == 0) {
+    log(x)
+  } else {
+    (x ^ l - 1) / l
+  }
+}
+
+# All of these values determined by visual inspection of resulting density
+# functions. A better approach would be some kind of optimization to normality,
+# perhaps minimizing the square of the skewness and *excess* kurtosis, both of
+# which are 0 in the standard normal distribution.
+
+TEAM_PITCHING_H <- -2.5
+TEAM_FIELDING_E <- -0.5
+TEAM_BASERUN_SB <- 0
+TEAM_PITCHING_HR <- 0.6
+TEAM_PITCHING_BB <- -0.15
+TEAM_PITCHING_SO <- -0.35
+
+```
+
+
+# Build Models
+## Task
+Using the training data set, build at least three different multiple linear
+regression models, using different variables (or the same variables with
+different transformations). Since we have not yet covered automated variable
+selection methods, you should select the variables manually (unless you
+previously learned Forward or Stepwise selection, etc.). Since you manually
+selected a variable for inclusion into the model or exclusion into [*sic*] the
+model, indicate why this was done. Discuss the coefficients in the models, do
+they make sense? For example, if a team hits a lot of Home Runs, it would be
+reasonably expected that such a team would win more games. However, if the
+coefficient is negative (suggesting that the team would lose more games), then
+that needs to be discussed. Are you keeping the model even though it is counter
+intuitive? Why? The boss needs to know.
 
 
 
@@ -269,4 +332,6 @@ They are reproduced in the appendix for review and comment.
 ```{r imputeMean, echo=TRUE, eval=FALSE}
 ```
 ```{r centerScale, echo=TRUE, eval=FALSE}
+```
+```{r plotScaled, echo=TRUE, eval=FALSE}
 ```
