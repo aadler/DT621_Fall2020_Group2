@@ -194,15 +194,22 @@ MBmelt[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
 ```
 
 ### Transformations
+#### Centering and Scaling
 The first transform applied will be centering and scaling, as discussed above.
+We will store the means and standard deviations so that we can transform the
+predictions back to their respective distributions.
 
 ```{r centerScale}
-MBmelt[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+MBmeltSC <- copy(MBmelt)
+MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
+                          keyby = Metric]
+MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBmeltUnscale, digits = 2L, caption = 'Data Means and SDs')
 ```
 
 At this point we would hope to see Gaussian-looking densities.
 ```{r plotScaled}
-ggplot(MBmelt, aes(x = Value)) + geom_density() +
+ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free')
 ```
 
@@ -212,6 +219,26 @@ input data (those wiggles at the crest of `TEAM_BATTING_SO` for example). Others
 are classic right tailed (exponential/gamma-esque) such as `TEAM_FIELDING_E` or
 `TEAM_BATTING_3B`. Still others are clearly multimodal. Then there are the
 weird spike-like ones as well.
+
+All of this indicates that there will need to be further processing.
+
+#### Box-Cox transformations
+One of classic data transformations to induce normality is the Box-Cox
+transform. It is defined as:
+\[
+y(\lambda) =
+\begin{cases}
+\frac{y^\lambda - 1}{\lambda}, &\quad \lambda \neq 0\\
+\ln{y}, &\quad \lambda = 0
+\end{cases}
+\]
+
+Unfortunately, this is only defined on positive data. Therefore, the unscaled
+data will need to be used. While in theory it would be nice to transform each
+column as best possible, that makes for very difficult reconstruction. At this
+point, we will pivot to continuing the analysis using the `caret` package which
+takes care of a lot of the computational issues.
+
 
 
 
