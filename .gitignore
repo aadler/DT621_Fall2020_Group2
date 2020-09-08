@@ -1,3 +1,6 @@
 .RHistory
 .Rproj.user/
 *.Rproj
+*.pdf
+*.docx
+*.html
