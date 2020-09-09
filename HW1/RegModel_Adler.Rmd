@@ -500,7 +500,7 @@ ignored in favor of the stepwise model with pairwise within class interactions.
 knitr::kable(data.frame(Model = c("Null", "Saturated", "Stepwise Pairwise"),
                         Rsq = c(snm$r.squared, ssm$r.squared, sstm$r.squared),
                         AdjRsq = c(snm$adj.r.squared, ssm$adj.r.squared,
-                                   ssm$adj.r.squared),
+                                   sstm$adj.r.squared),
                         RMSE = c(sqrt(mean(nullModel$residuals ^ 2)),
                                  sqrt(mean(saturatedModel$residuals ^ 2)),
                                  sqrt(mean(stepModel$residuals ^ 2)))),
@@ -508,6 +508,7 @@ knitr::kable(data.frame(Model = c("Null", "Saturated", "Stepwise Pairwise"),
 ```
 
 #### Residual Plots
+
 ```{r residPlots, fig.height=7}
 par(mfrow = c(2, 2))
 plot(saturatedModel$fitted.values, studres(saturatedModel),
@@ -635,8 +636,8 @@ processed in the exact same way:
  4. Centering and scaling
  
 ### Model Evaluations
-In the table below are the RMSE and MAPE of each of the three models developed
-above when applied to the **testing** set.
+In the table below are the \(R^2\), adjusted \(R^2\), and RMSEfor each of the
+three models developed above when applied to the **testing** set.
 
 ```{r buildTestSet}
 MBtstlng <- BCL[MBtstlng, on = 'Metric']
