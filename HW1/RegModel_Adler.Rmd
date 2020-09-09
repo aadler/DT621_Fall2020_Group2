@@ -667,7 +667,31 @@ cases, as was expected.
 
 ### Predictions
 We will use the stepwise-pairwise model to predict `TARGET_WINS` for the
-separately provided evaluation set.
+separately provided evaluation set by following the same preprocessing used for
+the training and testing sets.
+
+```{r predictions}
+MBT <- fread('./data/moneyball-evaluation-data.csv')
+MBT[, `:=`(TEAM_BATTING_HBP = NULL)]
+MBTlng <- melt(MBT, id.vars = 'INDEX', variable.name = 'Metric',
+               value.name = 'Value', variable.factor = FALSE)
+MBTlng[, Value := as.double(Value)]
+MBTlng <- BCL[MBTlng, on = 'Metric']
+MBTlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
+MBTlng[, Lambda := NULL]
+MBTlngSC <- copy(MBTlng)
+
+# Remove infinities
+MBTlngSC[, Value := ifelse(is.infinite(Value), NA, Value)]
+
+# Impute, Center, and Scale
+MBTlngSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+       keyby = Metric]
+MBTlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+MBTSC <- dcast(MBTlngSC, INDEX ~ Metric, value.var = 'Value')
+predictions <- predict(stepModel, MBTSC)
+predictions
+```
 
 # References
 
@@ -721,4 +745,6 @@ They are reproduced in the appendix for review and comment.
 ```{r residPlots, echo=TRUE, eval=FALSE}
 ```
 ```{r buildTestSet, echo=TRUE, eval=FALSE}
+```
+```{r predictions, echo=TRUE, eval=FALSE}
 ```
