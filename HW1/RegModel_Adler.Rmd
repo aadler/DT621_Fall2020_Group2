@@ -9,7 +9,6 @@ output: pdf_document
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 ```{r loadPackages}
-library(caret)
 library(corrplot)
 library(RColorBrewer)
 library(ggplot2)
