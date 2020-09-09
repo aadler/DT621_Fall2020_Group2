@@ -1,0 +1,207 @@
+---
+title: 'DATA 621---Business Analytics and Data Mining'
+subtitle: 'Fall 2020---Group 2---Homework #1'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "9/27/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loadData, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+train_set <- read.csv('data/moneyball-training-data.csv')
+eval_set <- read.csv('data/moneyball-evaluation-data.csv')
+```
+
+
+## 1. DATA EXPLORATION (Amber)
+Describe the size and the variables in the moneyball training data set. Consider
+that too much detail will cause a manager to lose interest while too little
+detail will make the manager consider that you aren't doing your job. Some
+suggestions are given below. Please do NOT treat this as a check list of things
+to do to complete the assignment. You should have your own thoughts on what to
+tell the boss. These are just ideas.
+
+  a. Mean / Standard Deviation / Median
+  b. Bar Chart or Box Plot of the data
+  c. Is the data correlated to the target variable (or to other variables?)
+  d. Are any of the variables missing and need to be imputed “fixed”?  
+  
+We are given a data set containing 2,276 records, each of which includes the 
+number of wins the team had that year and 15 additional statistics about the 
+season. A first look at the data shows that only about 8% of the records have 
+a full set of data. The good news is that most of the missing values come from 
+what we would expect; hit-by-pitch, caught stealing, double plays.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+pct_null <- data.frame(do.call("rbind", map(train_set %>% select(-INDEX), ~mean(is.na(.)))))
+colnames(pct_null) <- c('PCT_NULL')
+
+pct_null %>%
+  arrange(desc(PCT_NULL)) %>%
+  filter(PCT_NULL > 0)
+
+```
+
+  * Total cases: 2276, Complete cases: 191 (only ~8% of the data has fully filled in values)
+  * 15 stats (variables), 1 target (wins)
+  * Best team won 146 out of 162 games, worst team won none, Average number of wins is 80 (show win dist)
+  * Discuss missing values
+  
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+# histogram of wins
+p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
+  geom_histogram() + 
+  geom_vline(aes(xintercept=mean(TARGET_WINS)),
+            color="blue", linetype="dashed", size=1)+
+  labs(title="Distribution of Wins",x="Number of wins", y = "Number of teams")
+
+p
+
+# Correlation matrix with significance levels (p-value)
+library("Hmisc")
+res2 <- rcorr(as.matrix(train_set %>% select(-INDEX)))
+
+# Insignificant correlation are crossed
+corrplot(res2$r, type="upper", order="hclust", 
+          tl.col = "black", p.mat = res2$P, sig.level = 0.01, insig = "blank")
+
+
+train_set %>%
+  select(-INDEX) %>%
+  gather(-TARGET_WINS, key = "STAT", value = "VALUE") %>%
+  ggplot(aes(x = VALUE, y = TARGET_WINS)) +
+    geom_point() +
+  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+    facet_wrap(~ STAT, scales = "free")
+
+```
+
+  
+## 2. DATA PREPARATION (25 Points)
+Describe how you have transformed the data by changing the original variables or
+creating new variables. If you did transform the data or create new variables,
+discuss why you did this. Here are some possible transformations.  
+
+  a. Fix missing values (maybe with a Mean or Median value)
+  b. Create flags to suggest if a variable was missing
+  c. Transform data by putting it into buckets
+  d. Mathematical transforms such as log or square root (or use Box-Cox)
+  e. Combine variables (such as ratios or adding or multiplying) to create new
+  variables
+
+## 3. BUILD MODELS (25 Points)
+Using the training data set, build at least three different multiple linear
+regression models, using different variables (or the same variables with
+different transformations). Since we have not yet covered automated variable
+selection methods, you should select the variables manually (unless you
+previously learned Forward or Stepwise selection, etc.). Since you manually
+selected a variable for inclusion into the model or exclusion into the model,
+indicate why this was done.  
+  
+Discuss the coefficients in the models, do they make sense? For example, if a
+team hits a lot of Home Runs, it would be reasonably expected that such a team
+would win more games. However, if the coefficient is negative (suggesting that
+the team would lose more games), then that needs to be discussed. Are you
+keeping the model even though it is counter intuitive? Why? The boss needs to
+know.
+
+## 4. SELECT MODELS (25 Points)
+Decide on the criteria for selecting the best multiple linear regression model.
+Will you select a model with slightly worse performance if it makes more sense
+or is more parsimonious? Discuss why you selected your model.  
+  
+For the multiple linear regression model, will you use a metric such as Adjusted
+\(R^2\), RMSE, etc.? Be sure to explain how you can make inferences from the
+model, discuss multi-collinearity issues (if any), and discuss other relevant
+model output. Using the training data set, evaluate the multiple linear
+regression model based on (a) mean squared error, (b) \(R^2\), (c) F-statistic,
+and (d) residual plots. Make predictions using the evaluation data set.  
+
+## APPENDIX
+### Assignment Overview
+In this homework assignment, you will explore, analyze and model a data set
+containing approximately 2200 records. Each record represents a professional
+baseball team from the years 1871 to 2006 inclusive. Each record has the
+performance of the team for the given year, with all of the statistics adjusted
+to match the performance of a 162 game season.  
+  
+Your objective is to build a multiple linear regression model on the training
+data to predict the number of wins for the team. You can only use the variables
+given to you (or variables that you derive from the variables provided). Below
+is a short description of the variables of interest in the data set: 
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{VARIABLE NAME} & \textbf{DEFINITION} & \textbf{THEORETICAL EFFECT} \\ \hline
+INDEX & Identification Variable (do not use) & None \\ \hline
+TARGET\_WINS & Number of wins & \\ \hline
+TEAM\_BATTING\_H & Base Hits by batters (1B,2B,3B,HR) & Positive Impact on Wins  \\ \hline
+TEAM\_BATTING\_2B & Doubles by batters (2B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_3B & Triples by batters (3B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_HR & Homeruns by batters (4B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_BB & Walks by batters & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_HBP & Batters hit by pitch (get a free base) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_SO & Strikeouts by batters & Negative Impact on Wins \\ \hline
+TEAM\_BASERUN\_SB & Stolen bases & Positive Impact on Wins \\ \hline
+TEAM\_BASERUN\_CS & Caught stealing & Negative Impact on Wins \\ \hline
+TEAM\_FIELDING\_E & Errors & Negative Impact on Wins \\ \hline
+TEAM\_FIELDING\_DP & Double Plays & Positive Impact on Wins \\ \hline
+TEAM\_PITCHING\_BB & Walks allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_H & Hits allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_HR & Homeruns allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_SO & Strikeouts by pitchers & Positive Impact on Wins \\ \hline
+
+\end{tabular}
+\end{center}
+
+
+
+### R Programming code
+
+```{r initial, warning = FALSE}
+########### libraries 
+library(tidyverse)
+
+########### data
+train_set <- read.csv('data/moneyball-training-data.csv')
+eval_set <- read.csv('data/moneyball-evaluation-data.csv')
+
+```
+
+```{r dataExploration, results = 'hide'}
+# initial summary of all values 
+summary(train_set)
+p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
+  geom_histogram() + 
+  geom_vline(aes(xintercept=mean(TARGET_WINS)),
+            color="blue", linetype="dashed", size=1)+
+  labs(title="Distribution of Wins",x="Number of wins", y = "Number of teams")
+
+# complete vs total cases
+train_set %>%
+  filter(complete.cases(.) == TRUE) %>%
+  count() %>%
+  rename("complete cases"= n) %>%
+  bind_cols(
+    train_set %>%
+    select(TARGET_WINS) %>%
+    count() %>%
+    rename("target count" = n)
+  )
+```
+
+
+
