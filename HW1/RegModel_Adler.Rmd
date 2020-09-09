@@ -19,7 +19,7 @@ library(data.table)
 
 # Data Exploration
 ## Task
-Describe the size and the variables in the moneyballtraining data set. Consider
+Describe the size and the variables in the moneyball training data set. Consider
 that too much detail will cause a manager to lose interest while too little
 detail will make the manager consider that you aren’t doing your job. Some
 suggestions are given below. Please do NOT treat this as a check list of things
@@ -158,9 +158,9 @@ Why triples are negatively correlated with home runs or strikeouts is not as
 logical. There is a positive correlation between triples and fielding errors of
 around 51%. Perhaps triples are more a function of fielding than batting?
 
-Our suggestion would be to use only `TEAM_PITCHING_HR` as that has a slightly
-higher correlation with target wins, and leave all the other variables in the
-analysis.
+Initially, our thought was to only use `TEAM_PITCHING_HR` as that has a slightly
+higher correlation with target wins, but after running the model, it was clear
+that there was valid information captured in both variables so both were left in.
 
 # Data Preperation
 ## Task
@@ -285,10 +285,6 @@ MBmelt <- BCL[MBmelt]
 # Transform data where there are selected lambdas
 MBmelt[!is.na(Lambda), Value := BxCox(Value, Lambda)]
 
-# Remove TEAM_BATTING_HR
-
-MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HR']
-
 # Remove Lambda
 MBmelt[, Lambda := NULL]
 
@@ -312,7 +308,7 @@ knitr::kable(MBmeltUnscale, digits = 2L,
              caption = 'Post-Transform Data Means and SDs')
 ```
 
-Unfortunately, the scaling introduces infinities, as most of the Box-Cox lamdas
+Unfortunately, the scaling introduces infinities, as most of the Box-Cox lambdas
 are non-positive, which transforms 0 into infinity. These were converted to NAs
 for the purposes of imputation, after which scaling and centering will be done
 again. This is the danger of too many transforms. Each one induces a "stress" on
@@ -353,10 +349,13 @@ that needs to be discussed. Are you keeping the model even though it is counter
 intuitive? Why? The boss needs to know.
 
 ## Analysis
-Normally, we would have thrown everything into `caret`, but for the purposes of
-this homework, we will use calls to base R for the null and saturated models and
-the `stepAIC` function from the `MASS` package to perform a stepwise linear
-regression using AIC as our goodness of fit metric.
+Normally, we would use a statistical packahe like `caret`, which not only
+simplifies model construction but also takes care of cross-validation. For the
+purposes of this homework, and to demonstrate understanding of the underlying
+decisions involved in predictive modeling, we will use calls to base R for the
+null and saturated models and the `stepAIC` function from the `MASS` package to
+perform a stepwise linear regression using AIC as our goodness of fit metric.
+In the final section, we may pivot to using `caret` for final model selection.
 
 At this point we have a set of transformed independent variables on which we
 can build a model. The reasoning for the variable selection and transformations
@@ -364,6 +363,7 @@ are in previous sections. For ease, we will cast the dataset we were using from
 tall back to wide first. Furthermore, the target variable, `TARGET_WINS` does
 not need to be scaled.
 
+### Linear Models
 We will show three models: the null model, the saturated model, and the model
 resulting from the stepwise regression. For the regression, we will consider at
 most pairwise interactions within the classes of metrics.
@@ -377,47 +377,169 @@ MBsc[, INDEX := NULL]
 
 nullModel <- lm(TARGET_WINS ~ 1, data = MBsc)
 snm <- summary(nullModel)
+nmr2 <- prettyNum(snm$r.squared, digits = 3L)
+nmar2 <- prettyNum(snm$adj.r.squared, digits = 3L)
+nmAIC <- prettyNum(AIC(nullModel), digits = 2L, big.mark = ',')
 
 saturatedModel <- lm(TARGET_WINS ~ ., data = MBsc)
 ssm <- summary(saturatedModel)
+smr2 <- prettyNum(ssm$r.squared, digits = 3L)
+smar2 <- prettyNum(ssm$adj.r.squared, digits = 3L)
+smAIC <- prettyNum(AIC(saturatedModel), digits = 2L, big.mark = ',')
 
 stepModel <- stepAIC(saturatedModel, scope = list(upper = ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
-   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_SO) ^ 2 + (TEAM_FIELDING_DP +
-   TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB + TEAM_PITCHING_H +
-   TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, lower = ~ 1), direction = 'both')
+  TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
+  (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
+  TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, lower = ~ 1),
+  direction = 'both')
 
 sstm <- summary(stepModel)
+stmr2 <- prettyNum(sstm$r.squared, digits = 3L)
+stmar2 <- prettyNum(sstm$adj.r.squared, digits = 3L)
+stmAIC <- prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')
+
 ```
 ```{r nullOutput}
 knitr::kable(snm$coefficients, digits = 3L,
              caption = 'Null Model Output')
 ```
-The null model has an adjusted \(R^2\) of
-`r prettyNum(snm$adj.r.squared, digits = 3L)` and an AIC of
-`r prettyNum(AIC(nullModel), digits = 2L, big.mark = ',')`.
+The null model has an \(R^2\) of `r nmr2`, an adjusted \(R^2\) of `r nmar2` and
+an AIC of `r nmAIC`.
 
 ```{r satOutput}
 knitr::kable(ssm$coefficients, digits = 3L,
              caption = 'Saturated Model Output')
 ```
-The saturated model has an adjusted \(R^2\) of
-`r prettyNum(ssm$adj.r.squared, digits = 3L)` and an AIC of
-`r prettyNum(AIC(saturatedModel), digits = 2L, big.mark = ',')`.
+The saturated model has an \(R^2\) of `r smr2`, an adjusted \(R^2\) of `r smar2`
+and an AIC of `r smAIC`.
 
 ```{r stepOutput}
 knitr::kable(sstm$coefficients, digits = 3L,
              caption = 'Step Model with Pairwise Class Interactions Output')
 ```
 
-The step model allowing pairwise interactions between the four classes of
-metric: base running, batting, fielding, and pitching, has an adjusted \(R^2\)
-of `r prettyNum(sstm$adj.r.squared, digits = 3L)` and an AIC of
-`r prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')`.
+The step model allowing pairwise interactions within the four classes of
+metric: base running, batting, fielding, and pitching, has an \(R^2\) of
+`r stmr2`, an adjusted \(R^2\) of `r stmar2` and an AIC of `r stmAIC`.
 
+### Discussion
+The first item for discussion is the observation that the intercept does **not**
+change between the null (intercept-only) model and the saturated (all variables
+included) model. There are 162 games in a baseball season. According to both the
+null and saturated models, given no other information, a team will *lose*
+slightly more than half its games. Whereas in the stepwise model allowing for
+pairwise interactions within classes, given no other information, a team will
+*win* slightly more than half of its games. Apparently, inteactions unearth
+somewhat more information about why teams **lose** rather than why they **win**.
+
+The stepwise model has the best \(R^2\) of the three and the best AIC. Using
+accepted rules of thumb, a difference of more than 10 indicates no support for
+the model with the higher AIC. The magnitude is irrelevant; it is a function of
+the number of observations. The difference between the AIC of the saturated
+model and the step model is
+`r prettyNum(AIC(saturatedModel) - AIC(stepModel), digits = 2L)`. This shows
+that the saturated model, and obviously the null model, should be completely
+ignored in favor of the stepwise model with pairwise within class interactions.
+
+Most of the coefficients are reasonable within the context of the game of
+baseball. These two statements are axiomatic:
+  
+  * The only way to win is to have the higher score at the end of the game.
+  * The only way to score is for a baserunner to cross home plate.
+
+With those in mind, we can make the following observations about the linear
+non-interactive coefficients.
+
+ * Reasonable
+   * Caught stealing removes baserunners; negative coefficient makes sense.
+   * Stolen bases get a runner closer to home plate; positive coefficient makes
+   sense.
+   * Triples get a runner very close to home plate; positive coefficient makes
+   sense.
+   * Walks are free baserunners; positive coefficient makes sense.
+   * Hits increase the number of baserunners; positive coefficient makes sense.
+   * Hitting home runs directly increase the score; positive coefficient makes
+   sense.
+   * Striking out reduces the number of baserunners; negative coefficient makes
+   sense.
+   * Errors allow the other team free baserunners; negative coefficient makes
+   sense.
+   * Giving up home runs gives the opponent scores; negative coefficient makes
+   sense.
+   * Getting strikeouts reduces the opponents baserunners; positive coefficient
+   makes sense.
+ * Curious
+   * Hitting doubles get runners on base; why negative?
+   * Turning double plays reduce baserunners; why negative?
+   * Giving up walks allows the other team free baserunners; its coefficient is
+   both insignificant and near 0.
+   * Giving up hits allows the other team baserunners; its coefficient is
+   both insignificant and near 0.
+
+An absolutely fascinating observation. In the first draft of this exercise,
+`TEAM_BATTING_HR` was removed due to its high correlation with
+`TEAM_PITCHING_HR`. Note the coefficients, batting is +10 and pitching is -7.
+However, this is such as strong indicator, that in the first run, pitching was
+given a *postive* coefficient of around +3. In hindsight this is because
+*it was being used as an indicator for* ***batting!!*** The correlation allowed
+the use of pitching HRs as an indicator for the hidden batting HRs! Once both
+were restored to the model, the logical coefficients surfaced. Another reason
+why models should not be trusted out of the box, but all model results should
+be reviewed for sanity and sense!!
+
+The curiosities above can *possibly* be resolved by looking at the interaction
+terms. When giving up walks is interacted with strikeouts,
+`TEAM_PITCHING_BB:TEAM_PITCHING_SO`, the coefficent is positive and significant.
+Perhaps pitchers with many strikeouts also walk a lot of batters so giving up
+walks on its own is less relevant. Similarly, the interaction between giving
+up hits and strikeouts, `TEAM_PITCHING_H:TEAM_PITCHING_SO `, is highly negative
+and significant. Once again, it probably captures most of the giving up hits
+information making the singleton less relevant.
+
+A possible explanation for the negative coefficent for getting double plays, is
+that double plays require at least two people on base. That means that the
+oppenent has a lot of base runners, which is very highly correlated with
+scoring.
+
+The behavior of doubles remains confusing. Unless its hiding something like
+a team's propensity to strand runners on base. It would be interesting to see
+a breakdown between the American and National leagues, as the latter tends to be
+somewhat better at "small ball" and moving the runners along.
+
+# Build Models
+## Task
+Decide on the criteria for selecting the best multiple linear regression model.
+Will you select a model with slightly worse performance if it makes more sense
+or is more parsimonious? Discuss why you selected your model. For the multiple
+linear regression model, will you use a metric such as Adjusted \(R^2\), RMSE,
+etc.? Be sure to explain how you can make inferences from the model,
+discuss multi-collinearity issues (if any), and discuss other relevant model
+output.
+
+Using the training data set, evaluate the multiple linear regression model based
+on (a) mean squared error, (b) \(R^2\), (c) F-statistic, and (d) residual plots.
+Make predictions using the evaluation data set.
+
+## Analysis
+At this point, to properly fulfill this portion, cross-validation should be used
+in model selection. That is not possible here given the model selection above.
+That being said, given that the purpose of this exercise is **not** to
+demonstrate facility with tuning, the three models developed above will be used
+as the representatives. 
+
+### Criteria
+As a devout follower of Burnham & Anderson (2002), I prefer to use AIC whenever
+possible. This includes inherent recognition of parsimony. As discussed in the
+previous section, for an AIC difference of 10 or greater, the model with the
+higher AIC has effectively no support. The stepwise model with within-class
+pairwise interactions had the lowest AIC by hundreds. 
 
 # References
 
+ * Burnham, K.P. and Anderson, D.R. (2002) "Model Selection and Inference: A
+ Practical Information-Theoretic Approach". 2nd Edition, Springer-Verlag,
+ New York. http://dx.doi.org/10.1007/b97636
  * Friendly, Michael (2002) Corrgrams: Exploratory displays for correlation
  matrices, *The American Statistician*, 56:4, 316-324, DOI: 10.1198/000313002533,
  http://euclid.psych.yorku.ca/datavis/papers/corrgram.pdf
