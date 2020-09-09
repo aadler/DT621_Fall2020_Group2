@@ -19,7 +19,7 @@ sessionInfo()
 ```{r}
 library(tidyverse)
 train_df<- 
-  read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv?token=AJP53VTYKQ4BKNZQERSMBYK7KBD52")
+  read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv?token=AJP53VUTHKQNVGSBWE3U7KC7KDWP4")
 ```
 
 
