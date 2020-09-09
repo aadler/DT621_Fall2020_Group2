@@ -37,11 +37,9 @@ MB <- fread('./data/moneyball-training-data.csv')
 n <- dim(MB)[[1]]
 k <- dim(MB)[[2]]
 
-# Meltng data from wide to narrow for munging & ggplot; simultaneously removing
-# INDEX.
-MBmelt <- melt(MB[, -1L], measure.vars = names(MB[, -1L]),
-               variable.name = 'Metric', value.name = 'Value',
-               variable.factor = FALSE)
+# Meltng data from wide to narrow for munging & ggplot
+MBmelt <- melt(MB, id.vars = 'INDEX', variable.name = 'Metric',
+               value.name = 'Value', variable.factor = FALSE)
 ```
 
 ### Description
@@ -76,7 +74,7 @@ variables.
 ```{r summaryTable}
 # Removing 'TEAM_BATTING_HBP' and index from wide data. Easier to calculate
 # correlations later on using wide data.
-MB[, `:=`(INDEX = NULL, TEAM_BATTING_HBP = NULL)]
+MB[, `:=`(TEAM_BATTING_HBP = NULL)]
 
 # Removing 'TEAM_BATTING_HBP' from tall data
 MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HBP']
@@ -138,7 +136,7 @@ correlation matrix (Friendly 2002). Correlelograms refer to the time-series
 plots used to check for auto-correlation. The terms have been conflated, though.
 
 ```{r corrgram, fig.height=6}
-MBcor <- cor(MB, method = 'pearson', use = 'pairwise.complete.obs')
+MBcor <- cor(MB[, -1L], method = 'pearson', use = 'pairwise.complete.obs')
 corrplot(MBcor, 'ellipse', type = 'lower', order = 'hclust',
          col=brewer.pal(n=8, name="RdYlBu"))
 ```
@@ -154,11 +152,11 @@ the only way to get a hit.
 There are some interesting clusters. For example, `TEAM_FIELDING_E` and 
 `TEAM_BATTING_3B` are both negatively correlated with `TEAM_BATTING_SO` and
 `TEAM_BATTING_HR`. As regards `TEAM_FIELDING_E`, a hypothesis is that if batters
-are either hitting home runs or striking out, *they are***not***getting on base*.
-Therefore there are fewer opportunity for fielding errors. Why triples are 
-negatively correlated with HRs or SOs is not as logical. There is a positive
-correlation between triples and fielding errors of around 51%. Perhaps triples
-are more a function of fielding than batting?
+are either hitting home runs or striking out, *they are* **not**
+*getting on base*. Therefore there are fewer opportunity for fielding errors.
+Why triples are negatively correlated with home runs or strikeouts is not as
+logical. There is a positive correlation between triples and fielding errors of
+around 51%. Perhaps triples are more a function of fielding than batting?
 
 Our suggestion would be to use only `TEAM_PITCHING_HR` as that has a slightly
 higher correlation with target wins, and leave all the other variables in the
@@ -291,6 +289,9 @@ MBmelt[!is.na(Lambda), Value := BxCox(Value, Lambda)]
 
 MBmelt <- MBmelt[Metric != 'TEAM_BATTING_HR']
 
+# Remove Lambda
+MBmelt[, Lambda := NULL]
+
 # Plot results
 ggplot(MBmelt, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
@@ -303,7 +304,6 @@ and recentered.
 
 ```{r reScale}
 MBmeltSC <- copy(MBmelt)
-MBmeltSC[, Lambda := NULL]
 MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
                           keyby = Metric]
 
@@ -336,6 +336,7 @@ ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
   ggtitle(label = 'Kernel-Smoothed Densities of Scaled Box-Cox Transformed Data')
 ```
+
 # Build Models
 ## Task
 Using the training data set, build at least three different multiple linear
@@ -352,6 +353,18 @@ that needs to be discussed. Are you keeping the model even though it is counter
 intuitive? Why? The boss needs to know.
 
 ## Analysis
+At this point we have a set of transformed independent variables on which we
+can build a model. The target variable, `TARGET_WINS` does not need to be
+scaled. Normally, we would have thrown everything into `caret`, but for the
+purposes of this homework, we will use the `stepAIC` function from the `MASS`
+package to perform a backwards-stepwise linear regression using AIC as our
+goodness of fit metric. For ease, we will cast the dataset we were using from
+tall back to wide first.
+
+```{r lm1}
+MBsc <- dcast(MBmeltSC, INDEX ~ Metric, value.var = 'Value')
+```
+
 
 
 # References
