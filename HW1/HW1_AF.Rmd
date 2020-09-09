@@ -22,26 +22,56 @@ eval_set <- read.csv('data/moneyball-evaluation-data.csv')
 ```
 
 
-## 1. DATA EXPLORATION (Amber)
-Describe the size and the variables in the moneyball training data set. Consider
-that too much detail will cause a manager to lose interest while too little
-detail will make the manager consider that you aren't doing your job. Some
-suggestions are given below. Please do NOT treat this as a check list of things
-to do to complete the assignment. You should have your own thoughts on what to
-tell the boss. These are just ideas.
+## 1. DATA EXPLORATION
 
-  a. Mean / Standard Deviation / Median
-  b. Bar Chart or Box Plot of the data
-  c. Is the data correlated to the target variable (or to other variables?)
-  d. Are any of the variables missing and need to be imputed “fixed”?  
-  
+### How often does the team win?
+
 We are given a data set containing 2,276 records, each of which includes the 
 number of wins the team had that year and 15 additional statistics about the 
-season. A first look at the data shows that only about 8% of the records have 
-a full set of data. The good news is that most of the missing values come from 
-what we would expect; hit-by-pitch, caught stealing, double plays.
+season. The team wins on average about 50% of the games they play (81 games 
+out of 162), with the best season having 146 wins and the worst season having 
+0 wins. The data is pretty normally distributed, with most seasons having between
+49 and 112 wins (blue lines below). This means that there aren't too many extreme 
+seasons where the team won significantly more or significantly less games than 
+usual. This serves as a good gut-check for our final predictions; if the 
+predicted wins are too high or too low, we know something is probably off. 
 
-```{r, echo = FALSE, message = FALSE, warning = FALSE}
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3, fig.width = 5, fig.align = 'center'}
+
+avgWins <- mean(train_set$TARGET_WINS)
+sdev <- sd(train_set$TARGET_WINS)
+l1 <- mean(train_set$TARGET_WINS) - (2*sdev)
+l2 <- mean(train_set$TARGET_WINS) + (2*sdev)
+
+# histogram of wins
+p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
+  geom_histogram() + 
+  geom_vline(aes(xintercept= avgWins),
+            color="red", linetype="dashed", size=1)+
+  geom_vline(aes(xintercept=l1),
+            color="blue", linetype="dashed", size=1) +
+    geom_vline(aes(xintercept=l2),
+            color="blue", linetype="dashed", size=1) +
+  labs(title="Distribution of Wins",x="Number of wins", y = "Number of seasons")
+
+p
+```
+
+
+### What's missing? 
+A first look at the data shows that only about 8% of the records have 
+a full set of information. The good news is that most of the missing values come 
+from what we would expect because they don't happen too often; hit-by-pitch 
+(92% missing!), caught stealing (34% missing), and double plays (13% missing). 
+Since we have so little hit-by-pitch data, we expect that it doesn't contribute 
+to overall wins and will eliminate it from a few of the models we propose. The other
+two stats have less than half of the data missing, so we'll need to think of a 
+clever way to impute these values. The remaining missing information is from a 
+combination of stolen bases and strikeouts (by batters and pitchers). **It seems** 
+**completely unreasonable** to have zero strike outs in a season, so this is something 
+we'll most certainly have to impute. 
+
+```{r, include = FALSE}
 
 pct_null <- data.frame(do.call("rbind", map(train_set %>% select(-INDEX), ~mean(is.na(.)))))
 colnames(pct_null) <- c('PCT_NULL')
@@ -52,22 +82,113 @@ pct_null %>%
 
 ```
 
-  * Total cases: 2276, Complete cases: 191 (only ~8% of the data has fully filled in values)
-  * 15 stats (variables), 1 target (wins)
-  * Best team won 146 out of 162 games, worst team won none, Average number of wins is 80 (show win dist)
-  * Discuss missing values
+
+### Do the individual stats affect winning?
+Intuitively, we expect that Caught stealing, Errors, Hits allowed, Homeruns allowed, 
+Strikeouts by batters, and Walks allowed would all have a **negative** impact on
+the total wins. In other words, as these stats increase, we would expect that the 
+team is less likely to win.  
   
+However, when we look at the data for each of these statistics with respect to the 
+total number of wins, we don't see a clear relationship across the board. In fact, 
+only Errors and Hits allowed seem to have a negative impact on the wins. Caught stealing
+and strikeouts by batters appear to be random -- whether the stat for a particular season
+is high or low doesn't affect the overall number of wins. 
+  
+Even more interestingly, Homeruns and Walks allowed have the *opposite* effect; as the number
+of homeruns and walks that are allowed from the opposing team increase, the number of wins 
+appears to increase as well! 
+
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE}
 
-# histogram of wins
-p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
-  geom_histogram() + 
-  geom_vline(aes(xintercept=mean(TARGET_WINS)),
-            color="blue", linetype="dashed", size=1)+
-  labs(title="Distribution of Wins",x="Number of wins", y = "Number of teams")
+negSet <- train_set %>%
+  select(TARGET_WINS, 
+         'Errors' = TEAM_FIELDING_E, 
+         'Hits allowed' = TEAM_PITCHING_H, 
+         'Strikeouts by batters' = TEAM_BATTING_SO, 
+         'Caught stealing' = TEAM_BASERUN_CS, 
+         'Walks allowed' = TEAM_PITCHING_BB, 
+         'Homeruns allowed' = TEAM_PITCHING_HR)
 
-p
+ggplot(data = negSet %>%
+  gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+  facet_wrap(~ STAT, scales = "free")
+
+```
+
+
+We can look at the same information for the stats that we expect to have a **positive**
+effect on wins: Base hits, Doubles, Triples, Homeruns, and Walks by batters, Batters
+getting hit by pitches, Stolen bases, Double Plays, and Strikeouts by pitchers.  
+  
+Many of these stats *do* seem to have an effect on the number of wins. Most noteably,
+as the number of base hits and walks increase, the team is more likely to win. We see
+a slighter, positive relationship between homeruns, doubles, triples, and stolen bases.
+This makes sense when we think about it -- these things tend to happen less often in
+games than pure base hits and walks. Double plays and batters hit don't appear to have
+an effect on the number of wins either. Once again, this intuitively makes sense because
+they are less likely to happen in a game. 
+  
+One thing to note is the number of strikeouts compared to the number of wins. We can see
+that there are a few outliers -- abnormally high numbers of strikeouts in a season. This
+should be taken with caution, as they don't represent a typical season's stats. 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+posSet <- train_set %>%
+  select(TARGET_WINS, 
+         'Base hits' = TEAM_BATTING_H, 
+         'Doubles' = TEAM_BATTING_2B, 
+         'Triples' = TEAM_BATTING_3B, 
+         'Homeruns' = TEAM_BATTING_HR, 
+         'Walks' = TEAM_BATTING_BB, 
+         'Batters hit' = TEAM_BATTING_HBP,
+         'Stolen bases' = TEAM_BASERUN_SB,
+         'Double plays' = TEAM_FIELDING_DP,
+         'Strikeouts' = TEAM_PITCHING_SO)
+
+ggplot(data = posSet %>%
+  gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+  facet_wrap(~ STAT, scales = "free")
+
+```
+
+
+Some of the provided statistics are well-balanced in the sense that there are
+very few (or no) extreme values. **Homeruns by batters**, **Strikeouts by** 
+**batters**, and **Homeruns allowed** are examples of this. Aside from  
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+set1 <-  train_set %>%
+  select('Homeruns by batters' = TEAM_BATTING_HR, 
+         'Strikeouts by batters' = TEAM_BATTING_SO,  
+         'Homeruns allowed' = TEAM_PITCHING_HR) %>%
+  gather("stat", "value") %>%
+  filter(complete.cases(.) == TRUE)
+
+vals <- ggplot(set1 , aes(x=stat, y=value)) + 
+    geom_boxplot() +
+  labs(title="",x="", y = "Value") +
+  facet_wrap(~stat, scale="free")
+
+vals
+
+# sapply(train_set %>% select(-INDEX, -TARGET_WINS), function(x){length(boxplot.stats(x)$out)})
+
+```
+
+  
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 
 # Correlation matrix with significance levels (p-value)
 library("Hmisc")
@@ -77,131 +198,7 @@ res2 <- rcorr(as.matrix(train_set %>% select(-INDEX)))
 corrplot(res2$r, type="upper", order="hclust", 
           tl.col = "black", p.mat = res2$P, sig.level = 0.01, insig = "blank")
 
-
-train_set %>%
-  select(-INDEX) %>%
-  gather(-TARGET_WINS, key = "STAT", value = "VALUE") %>%
-  ggplot(aes(x = VALUE, y = TARGET_WINS)) +
-    geom_point() +
-  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
-    facet_wrap(~ STAT, scales = "free")
-
 ```
 
   
-## 2. DATA PREPARATION (25 Points)
-Describe how you have transformed the data by changing the original variables or
-creating new variables. If you did transform the data or create new variables,
-discuss why you did this. Here are some possible transformations.  
-
-  a. Fix missing values (maybe with a Mean or Median value)
-  b. Create flags to suggest if a variable was missing
-  c. Transform data by putting it into buckets
-  d. Mathematical transforms such as log or square root (or use Box-Cox)
-  e. Combine variables (such as ratios or adding or multiplying) to create new
-  variables
-
-## 3. BUILD MODELS (25 Points)
-Using the training data set, build at least three different multiple linear
-regression models, using different variables (or the same variables with
-different transformations). Since we have not yet covered automated variable
-selection methods, you should select the variables manually (unless you
-previously learned Forward or Stepwise selection, etc.). Since you manually
-selected a variable for inclusion into the model or exclusion into the model,
-indicate why this was done.  
-  
-Discuss the coefficients in the models, do they make sense? For example, if a
-team hits a lot of Home Runs, it would be reasonably expected that such a team
-would win more games. However, if the coefficient is negative (suggesting that
-the team would lose more games), then that needs to be discussed. Are you
-keeping the model even though it is counter intuitive? Why? The boss needs to
-know.
-
-## 4. SELECT MODELS (25 Points)
-Decide on the criteria for selecting the best multiple linear regression model.
-Will you select a model with slightly worse performance if it makes more sense
-or is more parsimonious? Discuss why you selected your model.  
-  
-For the multiple linear regression model, will you use a metric such as Adjusted
-\(R^2\), RMSE, etc.? Be sure to explain how you can make inferences from the
-model, discuss multi-collinearity issues (if any), and discuss other relevant
-model output. Using the training data set, evaluate the multiple linear
-regression model based on (a) mean squared error, (b) \(R^2\), (c) F-statistic,
-and (d) residual plots. Make predictions using the evaluation data set.  
-
-## APPENDIX
-### Assignment Overview
-In this homework assignment, you will explore, analyze and model a data set
-containing approximately 2200 records. Each record represents a professional
-baseball team from the years 1871 to 2006 inclusive. Each record has the
-performance of the team for the given year, with all of the statistics adjusted
-to match the performance of a 162 game season.  
-  
-Your objective is to build a multiple linear regression model on the training
-data to predict the number of wins for the team. You can only use the variables
-given to you (or variables that you derive from the variables provided). Below
-is a short description of the variables of interest in the data set: 
-
-\begin{center}
-\begin{tabular}{|l|l|l|}
-\hline
-\textbf{VARIABLE NAME} & \textbf{DEFINITION} & \textbf{THEORETICAL EFFECT} \\ \hline
-INDEX & Identification Variable (do not use) & None \\ \hline
-TARGET\_WINS & Number of wins & \\ \hline
-TEAM\_BATTING\_H & Base Hits by batters (1B,2B,3B,HR) & Positive Impact on Wins  \\ \hline
-TEAM\_BATTING\_2B & Doubles by batters (2B) & Positive Impact on Wins \\ \hline
-TEAM\_BATTING\_3B & Triples by batters (3B) & Positive Impact on Wins \\ \hline
-TEAM\_BATTING\_HR & Homeruns by batters (4B) & Positive Impact on Wins \\ \hline
-TEAM\_BATTING\_BB & Walks by batters & Positive Impact on Wins \\ \hline
-TEAM\_BATTING\_HBP & Batters hit by pitch (get a free base) & Positive Impact on Wins \\ \hline
-TEAM\_BATTING\_SO & Strikeouts by batters & Negative Impact on Wins \\ \hline
-TEAM\_BASERUN\_SB & Stolen bases & Positive Impact on Wins \\ \hline
-TEAM\_BASERUN\_CS & Caught stealing & Negative Impact on Wins \\ \hline
-TEAM\_FIELDING\_E & Errors & Negative Impact on Wins \\ \hline
-TEAM\_FIELDING\_DP & Double Plays & Positive Impact on Wins \\ \hline
-TEAM\_PITCHING\_BB & Walks allowed & Negative Impact on Wins \\ \hline
-TEAM\_PITCHING\_H & Hits allowed & Negative Impact on Wins \\ \hline
-TEAM\_PITCHING\_HR & Homeruns allowed & Negative Impact on Wins \\ \hline
-TEAM\_PITCHING\_SO & Strikeouts by pitchers & Positive Impact on Wins \\ \hline
-
-\end{tabular}
-\end{center}
-
-
-
-### R Programming code
-
-```{r initial, warning = FALSE}
-########### libraries 
-library(tidyverse)
-
-########### data
-train_set <- read.csv('data/moneyball-training-data.csv')
-eval_set <- read.csv('data/moneyball-evaluation-data.csv')
-
-```
-
-```{r dataExploration, results = 'hide'}
-# initial summary of all values 
-summary(train_set)
-p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
-  geom_histogram() + 
-  geom_vline(aes(xintercept=mean(TARGET_WINS)),
-            color="blue", linetype="dashed", size=1)+
-  labs(title="Distribution of Wins",x="Number of wins", y = "Number of teams")
-
-# complete vs total cases
-train_set %>%
-  filter(complete.cases(.) == TRUE) %>%
-  count() %>%
-  rename("complete cases"= n) %>%
-  bind_cols(
-    train_set %>%
-    select(TARGET_WINS) %>%
-    count() %>%
-    rename("target count" = n)
-  )
-```
-
-
 
