@@ -37,7 +37,7 @@ MB <- fread('./data/moneyball-training-data.csv')
 n <- dim(MB)[[1]]
 k <- dim(MB)[[2]]
 
-# Meltng data from wide to narrow for munging & ggplot
+# Melting data from wide to narrow for munging & ggplot
 MBmelt <- melt(MB, id.vars = 'INDEX', variable.name = 'Metric',
                value.name = 'Value', variable.factor = FALSE)
 ```
@@ -108,7 +108,7 @@ better view, followed by a histogram of `TEAM_PITCHING_H`.
 ggplot(MBmelt[Metric != 'TEAM_PITCHING_H'], aes(x = Value, y = Metric)) +
   geom_boxplot() + scale_x_continuous(labels = comma)
 
-# Use the Freedman-Diaconis rule for historgram bin widths instead of ggplot
+# Use the Freedman-Diaconis rule for histogram bin widths instead of ggplot
 # defaults
 
 FreedmanDiaconis <- function(x) {
@@ -186,8 +186,8 @@ manually to demonstrate understanding.
 ### Training and Test Sets
 As we are performing this analysis manually, we will break up the supplied data
 into two sets, one for training and one for testing. This needs to be done
-before any normalisation or imputation, otherwise the testing set is polluted
-with information from the training set. Please note that obervations prior to
+before any normalization or imputation, otherwise the testing set is polluted
+with information from the training set. Please note that observations prior to
 this point were on the entirety of the data set.
 
 ```{r testTrain}
@@ -195,6 +195,8 @@ set.seed(811247)
 trainObs <- sample(x = n, size = 0.75 * n, replace = FALSE)
 MBtrn <- MB[trainObs]
 MBtst <- MB[!trainObs]
+ntrn <- dim(MBtrn)[[1]]
+ntst <- dim(MBtst)[[1]]
 MBtrnlng <- melt(MBtrn, id.vars = 'INDEX', variable.name = 'Metric',
                  value.name = 'Value', variable.factor = FALSE)
 MBtstlng <- melt(MBtst, id.vars = 'INDEX', variable.name = 'Metric',
@@ -372,12 +374,10 @@ intuitive? Why? The boss needs to know.
 
 ## Analysis
 Normally, we would use a statistical package like `caret`, which not only
-simplifies model construction but also takes of splitting into training and
-test sets and takes care of cross-validation. For the purposes of this homework,
-and to demonstrate understanding of the underlying decisions involved in
-predictive modeling, we will use calls to base R and the `MASS` package.
-
-As the transforms were imposed on the entirety of the training data, we ar
+simplifies model construction but also takes care of cross-validation. For the
+purposes of this homework, and to demonstrate understanding of the underlying
+decisions involved in predictive modeling, we will use calls to base R and the
+`MASS` package.
 
 A null model is once where there are no explanatory variables other than the
 grand mean. A saturated model is one where every variable appears. 
@@ -392,17 +392,15 @@ not need to be scaled.
 We will show three models:
 
  1. The null model: This is the model with only the intercept, the grand mean.
- 2. The saturated model: this is the model with every term included
+ 2. The saturated model: this is the model with every term included.
  3. A model allowing pairwise interactions within the data types of baserunning,
  batting, pitching, and fielding, fit using a forward and backwards stepwise
- regression, and the model
-resulting from the stepwise regression. A nuFor the regression, we will consider at
-most pairwise interactions within the classes of metrics.
+ regression.
 
 ```{r lm, include=FALSE}
 MBtrnSC <- dcast(MBtrnlngSC, INDEX ~ Metric, value.var = 'Value')
 
-# Rscale TARGET_WINS to its standard value.
+# Rescale TARGET_WINS to its standard value.
 MBtrnSC[, TARGET_WINS := TARGET_WINS * 
           MBtrnlngUnscale[Metric == 'TARGET_WINS', SD] +
           MBtrnlngUnscale[Metric == 'TARGET_WINS', Mean]]
@@ -485,7 +483,7 @@ The first item for discussion is the observation that while the intercept does
 not change between the null model and the saturated model, it does decrease for
 the model allowing within class pairwise interactions. There are 162 games in a
 baseball season. According to all the models, given no other information, a team
-will lose slightly more than half its games. Apparently, interctions in the
+will lose slightly more than half its games. Apparently, interactions in the
 stepwise model unearth somewhat more information about why teams win.
 
 #### Statistics
@@ -498,8 +496,19 @@ saturated model and the step model is
 that the saturated model, and obviously the null model, should be completely
 ignored in favor of the stepwise model with pairwise within class interactions.
 
+```{r trainStatTable}
+knitr::kable(data.frame(Model = c("Null", "Saturated", "Stepwise Pairwise"),
+                        Rsq = c(snm$r.squared, ssm$r.squared, sstm$r.squared),
+                        AdjRsq = c(snm$adj.r.squared, ssm$adj.r.squared,
+                                   ssm$adj.r.squared),
+                        RMSE = c(sqrt(mean(nullModel$residuals ^ 2)),
+                                 sqrt(mean(saturatedModel$residuals ^ 2)),
+                                 sqrt(mean(stepModel$residuals ^ 2)))),
+             digits = 3L, caption = 'Train Set Results')
+```
+
 #### Residual Plots
-```{r residPlots, fig.width=7}
+```{r residPlots, fig.height=7}
 par(mfrow = c(2, 2))
 plot(saturatedModel$fitted.values, studres(saturatedModel),
      main = 'Saturated Model', xlab = 'Predicted Values',
@@ -515,10 +524,11 @@ par(mfrow = c(1, 1))
 
 Both the saturated and the stepwise models look to have a basically normal
 distribution of their residuals. The null model returns a single value,
-explaining the bizarness of the graph.
+explaining the bizarreness of the graph.
 
 The **actual** model to be used for the prediction will be the model which
-returns the best RMSE and MAPE on the test set.
+returns the best RMSE on the test set. Unfortunately, MAPE cannot be used as
+there are observations which are 0.
 
 #### Explanation of Selected Model
 Most of the coefficients are reasonable within the context of the game of
@@ -553,14 +563,14 @@ non-interactive coefficients.
    * Turning double plays reduce baserunners; why negative?
    * Giving up walks allows the other team free baserunners; negative
    coefficient makes sense but why insignificant?
-   * Giving up hits allows the other team baserunners; why positive athough
+   * Giving up hits allows the other team baserunners; why positive although
    insignificant?
 
 An absolutely fascinating observation. In the first draft of this exercise,
 `TEAM_BATTING_HR` was removed due to its high correlation with
 `TEAM_PITCHING_HR`. Note the coefficients, batting is almost +12 and pitching is
 -9. However, this is such as strong indicator, that in the first run, pitching
-was given a *postive* coefficient of around +3. In hindsight this is because
+was given a *positive* coefficient of around +3. In hindsight this is because
 *it was being used as an indicator for* ***batting!!*** The correlation allowed
 the use of pitching HRs as an indicator for the hidden batting HRs! Once both
 were restored to the model, the logical coefficients surfaced. Another reason
@@ -573,7 +583,7 @@ terms. The interaction between giving up hits and strikeouts,
 probably captures most of the giving up hits information making the singleton
 less relevant.
 
-A possible explanation for the negative coefficent for getting double plays, is
+A possible explanation for the negative coefficient for getting double plays, is
 that double plays require at least two people on base. That means that the
 opponent has a lot of base runners, which is very highly correlated with
 scoring.
@@ -614,7 +624,7 @@ plots requested for the training data are also in the previous section.
 
 General inferences about the nature of the coefficients is in the previous
 section. The fascinating example of how multi-collinearity can override logic is
-also discussed in the previous secton.
+also discussed in the previous section.
 
 In order to make inferences from the model, the incoming data needs to be
 processed in the exact same way:
@@ -648,24 +658,40 @@ MBtstSC[, TARGET_WINS := TARGET_WINS *
           MBtstlngUnscale[Metric == 'TARGET_WINS', SD] +
           MBtstlngUnscale[Metric == 'TARGET_WINS', Mean]]
 nmP <- predict(nullModel, MBtstSC)
+nmPR <- (MBtstSC$TARGET_WINS - nmP)
 smP <- predict(saturatedModel, MBtstSC)
+smPR <- (MBtstSC$TARGET_WINS - smP)
 stmP <- predict(stepModel, MBtstSC)
-nmRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - nmP) ^ 2))
-nmMAPE <- mean(abs((MBtstSC$TARGET_WINS - nmP) / MBtstSC$TARGET_WINS))
-smRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - smP) ^ 2))
-smMAPE <- mean(abs((MBtstSC$TARGET_WINS - smP) / MBtstSC$TARGET_WINS))
-stmRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - stmP) ^ 2))
-stmMAPE <- mean(abs((MBtstSC$TARGET_WINS - stmP) / MBtstSC$TARGET_WINS))
+stmPR <- (MBtstSC$TARGET_WINS - stmP)
+SST <- sum((MBtstSC$TARGET_WINS - mean(MBtstSC$TARGET_WINS)) ^ 2)
+nmPR2 <- 1 - sum(nmPR ^ 2) / SST
+nmPaR2 <- 1 - (1 - nmPR2) * (snm$df[[1]] + snm$df[[2]] - 1) / (snm$df[[2]])
+nmPRMSE <- sqrt(mean(nmPR ^ 2))
+
+smPR2 <- 1 - sum(smPR ^ 2) / SST
+smPaR2 <- 1 - (1 - smPR2) * (ssm$df[[1]] + ssm$df[[2]] - 1) / (ssm$df[[2]])
+smPRMSE <- sqrt(mean(smPR ^ 2))
+
+stmPR2 <- 1 - sum(stmPR ^ 2) / SST
+stmPaR2 <- 1 - (1 - stmPR2) * (sstm$df[[1]] + sstm$df[[2]] - 1) / (sstm$df[[2]])
+stmPRMSE <- sqrt(mean(stmPR ^ 2))
 knitr::kable(data.frame(Model = c("Null", "Saturated", "Stepwise Pairwise"),
-                        RMSE = c(nmRMSE, smRMSE, stmRMSE),
-                        MAPE = c(nmMAPE, smMAPE, stmMAPE)),
+                        Rsq = c(nmPR2, smPR2, stmPR2),
+                        AdjRsq = c(nmPaR2, smPaR2, stmPaR2),
+                        RMSE = c(nmPRMSE, smPRMSE, stmPRMSE)),
              digits = 3L, caption = 'Test Set Results')
 ```
 
-The stepwise model allowing for pairwise interactions is the winner in both
-cases, as was expected.
+The stepwise model allowing for pairwise interactions is the winner in all
+cases, as was expected. The metrics are all worse than those on the training
+set. This is a classic example of overfitting, which may have been helped by
+k-fold cross-validation.
 
-### Predictions
+Also, this is one of those rare times where the actual \(R^2\) can be negative.
+The null model prediction is a constant which is not equal to the grand mean of
+the testing set, so it actually **adds** variance.
+
+### Predictions on Evaluation Set
 We will use the stepwise-pairwise model to predict `TARGET_WINS` for the
 separately provided evaluation set by following the same preprocessing used for
 the training and testing sets.
@@ -702,7 +728,7 @@ predictions
  matrices, *The American Statistician*, 56:4, 316-324, DOI: 10.1198/000313002533,
  http://euclid.psych.yorku.ca/datavis/papers/corrgram.pdf
 
-# Appendix
+# Code Appendix
 The code chunks below represent the code called in order during the analysis.
 They are reproduced in the appendix for review and comment.
 
@@ -741,6 +767,8 @@ They are reproduced in the appendix for review and comment.
 ```{r satOutput, echo=TRUE, eval=FALSE}
 ```
 ```{r stepOutput, echo=TRUE, eval=FALSE}
+```
+```{r trainStatTable, echo=TRUE, eval=FALSE}
 ```
 ```{r residPlots, echo=TRUE, eval=FALSE}
 ```
