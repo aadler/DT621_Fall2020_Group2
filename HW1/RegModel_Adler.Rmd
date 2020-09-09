@@ -183,6 +183,28 @@ all of the following imputation and transformation is done as pre-processing
 to the model. For the purposes of this homework, they are being performed
 manually to demonstrate understanding.
 
+### Training and Test Sets
+As we are performing this analysis manually, we will break up the supplied data
+into two sets, one for training and one for testing. This needs to be done
+before any normalisation or imputation, otherwise the testing set is polluted
+with information from the training set. Please note that obervations prior to
+this point were on the entirety of the data set.
+
+```{r testTrain}
+set.seed(811247)
+trainObs <- sample(x = n, size = 0.75 * n, replace = FALSE)
+MBtrn <- MB[trainObs]
+MBtst <- MB[!trainObs]
+MBtrnlng <- melt(MBtrn, id.vars = 'INDEX', variable.name = 'Metric',
+                 value.name = 'Value', variable.factor = FALSE)
+MBtstlng <- melt(MBtst, id.vars = 'INDEX', variable.name = 'Metric',
+                 value.name = 'Value', variable.factor = FALSE)
+
+# Casting to double since medians and quartiles may return non-integer values.
+MBtrnlng[, Value := as.double(Value)]
+MBtstlng[, Value := as.double(Value)]
+```
+
 ### Imputation
 Since we are restricting ourselves to the world of the simple linear regression
 model, it makes sense to use a Z-transformation to standardize the models.
@@ -195,7 +217,7 @@ address that by calculating the mean and SD, *prior* to imputation. We will not
 do so now for simplicity. 
 
 ```{r imputeMean}
-MBmelt[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+MBtrnlng[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
        keyby = Metric]
 ```
 
@@ -206,17 +228,17 @@ We will store the means and standard deviations so that we can transform the
 predictions back to their respective distributions.
 
 ```{r centerScale}
-MBmeltSC <- copy(MBmelt)
-MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
-                          keyby = Metric]
-MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
-knitr::kable(MBmeltUnscale, digits = 2L, caption = 'Data Means and SDs')
+MBtrnlngSC <- copy(MBtrnlng)
+MBtrnlngUnscale <- MBtrnlngSC[, .(Mean = mean(Value), SD = sd(Value)),
+                              keyby = Metric]
+MBtrnlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBtrnlngUnscale, digits = 2L, caption = 'Data Means and SDs')
 ```
 ```{r plotScaled, fig.width=7}
-ggplot(MBmelt, aes(x = Value)) + geom_density() +
+ggplot(MBtrnlng, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
   ggtitle(label = 'Kernel-Smoothed Densities of Raw Data')
-ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
+ggplot(MBtrnlngSC, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
   ggtitle(label = 'Kernel-Smoothed Densities of Centered and Scaled Data')
 ```
@@ -273,38 +295,38 @@ BxCox <- function(x, l) {
 
 BCL <- data.table(Metric = c('TEAM_PITCHING_H', 'TEAM_FIELDING_E',
                              'TEAM_BASERUN_SB', 'TEAM_PITCHING_HR',
-                             'TEAM_PITCHING_BB', 'TEAM_PITCHING_SO',
-                             'TEAM_BATTING_3B'),
-                  Lambda = c(-2.5, -0.5, 0, 0.6, -0.15, -0.35, 0))
+                             'TEAM_BATTING_HR', 'TEAM_PITCHING_BB',
+                             'TEAM_PITCHING_SO', 'TEAM_BATTING_3B',
+                             'TEAM_BASERUN_CS'),
+                  Lambda = c(-2.5, -0.7, 0, 0.6, 0.6, -0.1, -0.35, 0, 0.5))
 setkey(BCL, Metric)
 knitr::kable(BCL, digits = 2L, caption = 'Hand-selected Box-Cox Lambdas')
 
-# Left join MBmelt to BCL. 
-MBmelt <- BCL[MBmelt]
+# Left join MBtrnlng to BCL. 
+MBtrnlng <- BCL[MBtrnlng]
 
 # Transform data where there are selected lambdas
-MBmelt[!is.na(Lambda), Value := BxCox(Value, Lambda)]
+MBtrnlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
 
 # Remove Lambda
-MBmelt[, Lambda := NULL]
+MBtrnlng[, Lambda := NULL]
 
 # Plot results
-ggplot(MBmelt, aes(x = Value)) + geom_density() +
+ggplot(MBtrnlng, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
   ggtitle(label = 'Kernel-Smoothed Densities of Box-Cox Transformed Data')
 ```
 
-Most of the variables are now closer to a Gaussian distribution. Also note we
-have removed `TEAM_BATTING_HR` from the data. Now the data needs to be rescaled
-and recentered.
+Most of the variables are now closer to a Gaussian distribution. Now the data
+needs to be rescaled and recentered.
 
 ```{r reScale}
-MBmeltSC <- copy(MBmelt)
-MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
+MBtrnlngSC <- copy(MBtrnlng)
+MBtrnlngUnscale <- MBtrnlngSC[, .(Mean = mean(Value), SD = sd(Value)),
                           keyby = Metric]
 
-MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
-knitr::kable(MBmeltUnscale, digits = 2L,
+MBtrnlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBtrnlngUnscale, digits = 2L,
              caption = 'Post-Transform Data Means and SDs')
 ```
 
@@ -316,19 +338,19 @@ the relationship between the independent and dependent variables. At what point
 does that relationship fracture?
 
 ```{r reImputeThenScale}
-MBmeltSC <- copy(MBmelt)
-MBmeltSC[, Lambda := NULL]
+MBtrnlngSC <- copy(MBtrnlng)
+
 # Remove infinities
-MBmeltSC[, Value := ifelse(is.infinite(Value), NA, Value)]
+MBtrnlngSC[, Value := ifelse(is.infinite(Value), NA, Value)]
 # Center and Scale
-MBmeltSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+MBtrnlngSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
        keyby = Metric]
-MBmeltUnscale <- MBmeltSC[, .(Mean = mean(Value), SD = sd(Value)),
+MBtrnlngUnscale <- MBtrnlngSC[, .(Mean = mean(Value), SD = sd(Value)),
                           keyby = Metric]
-MBmeltSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
-knitr::kable(MBmeltUnscale, digits = 2L,
+MBtrnlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+knitr::kable(MBtrnlngUnscale, digits = 2L,
              caption = 'Final Post-Transform Data Means and SDs')
-ggplot(MBmeltSC, aes(x = Value)) + geom_density() +
+ggplot(MBtrnlngSC, aes(x = Value)) + geom_density() +
   facet_wrap(~ Metric, scales = 'free') +
   ggtitle(label = 'Kernel-Smoothed Densities of Scaled Box-Cox Transformed Data')
 ```
@@ -349,13 +371,16 @@ that needs to be discussed. Are you keeping the model even though it is counter
 intuitive? Why? The boss needs to know.
 
 ## Analysis
-Normally, we would use a statistical packahe like `caret`, which not only
-simplifies model construction but also takes care of cross-validation. For the
-purposes of this homework, and to demonstrate understanding of the underlying
-decisions involved in predictive modeling, we will use calls to base R for the
-null and saturated models and the `stepAIC` function from the `MASS` package to
-perform a stepwise linear regression using AIC as our goodness of fit metric.
-In the final section, we may pivot to using `caret` for final model selection.
+Normally, we would use a statistical package like `caret`, which not only
+simplifies model construction but also takes of splitting into training and
+test sets and takes care of cross-validation. For the purposes of this homework,
+and to demonstrate understanding of the underlying decisions involved in
+predictive modeling, we will use calls to base R and the `MASS` package.
+
+As the transforms were imposed on the entirety of the training data, we ar
+
+A null model is once where there are no explanatory variables other than the
+grand mean. A saturated model is one where every variable appears. 
 
 At this point we have a set of transformed independent variables on which we
 can build a model. The reasoning for the variable selection and transformations
@@ -364,30 +389,51 @@ tall back to wide first. Furthermore, the target variable, `TARGET_WINS` does
 not need to be scaled.
 
 ### Linear Models
-We will show three models: the null model, the saturated model, and the model
-resulting from the stepwise regression. For the regression, we will consider at
+We will show three models:
+
+ 1. The null model: This is the model with only the intercept, the grand mean.
+ 2. The saturated model: this is the model with every term included
+ 3. A model allowing pairwise interactions within the data types of baserunning,
+ batting, pitching, and fielding, fit using a forward and backwards stepwise
+ regression, and the model
+resulting from the stepwise regression. A nuFor the regression, we will consider at
 most pairwise interactions within the classes of metrics.
 
 ```{r lm, include=FALSE}
-MBsc <- dcast(MBmeltSC, INDEX ~ Metric, value.var = 'Value')
-# Replace TARGET_WINS with original. Could have restored it from MBmeltUnscale.
-MBsc[, TARGET_WINS := MB[, TARGET_WINS]]
-# Removing INDEX for convenience. Could have used "-INDEX" in the formula call.
-MBsc[, INDEX := NULL]
+MBtrnSC <- dcast(MBtrnlngSC, INDEX ~ Metric, value.var = 'Value')
 
-nullModel <- lm(TARGET_WINS ~ 1, data = MBsc)
+# Rscale TARGET_WINS to its standard value.
+MBtrnSC[, TARGET_WINS := TARGET_WINS * 
+          MBtrnlngUnscale[Metric == 'TARGET_WINS', SD] +
+          MBtrnlngUnscale[Metric == 'TARGET_WINS', Mean]]
+
+# Removing INDEX for convenience. Could have used "-INDEX" in the formula call.
+MBtrnSC[, INDEX := NULL]
+
+nullModel <- lm(TARGET_WINS ~ 1, data = MBtrnSC)
 snm <- summary(nullModel)
 nmr2 <- prettyNum(snm$r.squared, digits = 3L)
 nmar2 <- prettyNum(snm$adj.r.squared, digits = 3L)
 nmAIC <- prettyNum(AIC(nullModel), digits = 2L, big.mark = ',')
+nmRMSE <- prettyNum(sqrt(mean(nullModel$residuals ^ 2)), digits = 5L)
 
-saturatedModel <- lm(TARGET_WINS ~ ., data = MBsc)
+saturatedModel <- lm(TARGET_WINS ~ ., data = MBtrnSC)
 ssm <- summary(saturatedModel)
 smr2 <- prettyNum(ssm$r.squared, digits = 3L)
 smar2 <- prettyNum(ssm$adj.r.squared, digits = 3L)
 smAIC <- prettyNum(AIC(saturatedModel), digits = 2L, big.mark = ',')
+smRMSE <- prettyNum(sqrt(mean(saturatedModel$residuals ^ 2)), digits = 5L)
+smF <- prettyNum(ssm$fstatistic, digits = 5L)
+smFp <- pf(ssm$fstatistic[[1]], ssm$fstatistic[[2]], ssm$fstatistic[[3]],
+            lower.tail = FALSE)
 
-stepModel <- stepAIC(saturatedModel, scope = list(upper = ~
+crazyModel <- lm(TARGET_WINS ~
+  (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
+  TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
+  (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
+  TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, data = MBtrnSC)
+
+stepModel <- stepAIC(crazyModel, scope = list(upper = ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
   (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
@@ -398,21 +444,29 @@ sstm <- summary(stepModel)
 stmr2 <- prettyNum(sstm$r.squared, digits = 3L)
 stmar2 <- prettyNum(sstm$adj.r.squared, digits = 3L)
 stmAIC <- prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')
-
+stmRMSE <- prettyNum(sqrt(mean(stepModel$residuals ^ 2)), digits = 5L)
+stmF <- prettyNum(sstm$fstatistic, digits = 5L)
+stmFp <- pf(sstm$fstatistic[[1]], sstm$fstatistic[[2]], sstm$fstatistic[[3]],
+            lower.tail = FALSE)
 ```
 ```{r nullOutput}
 knitr::kable(snm$coefficients, digits = 3L,
              caption = 'Null Model Output')
 ```
-The null model has an \(R^2\) of `r nmr2`, an adjusted \(R^2\) of `r nmar2` and
-an AIC of `r nmAIC`.
+The null model has an \(R^2\) of `r nmr2`, an adjusted \(R^2\) of `r nmar2`, an
+AIC of `r nmAIC`, and an RMSE on the training set of `r nmRMSE`. There is no
+F-statistic for the entirety of the null model as there is only one axis for
+degrees of freedom.
 
 ```{r satOutput}
 knitr::kable(ssm$coefficients, digits = 3L,
              caption = 'Saturated Model Output')
 ```
-The saturated model has an \(R^2\) of `r smr2`, an adjusted \(R^2\) of `r smar2`
-and an AIC of `r smAIC`.
+The saturated model has an \(R^2\) of `r smr2`, an adjusted \(R^2\) of
+`r smar2`, an AIC of `r smAIC`, and an RMSE on the training set of `r smRMSE`.
+The p-value for the F-test with a critical value of `r smF[[1]]` with
+`r smF[[2]]` and `r smF[[3]]` degrees of freedom is below machine error
+(`r smFp`).
 
 ```{r stepOutput}
 knitr::kable(sstm$coefficients, digits = 3L,
@@ -421,17 +475,18 @@ knitr::kable(sstm$coefficients, digits = 3L,
 
 The step model allowing pairwise interactions within the four classes of
 metric: base running, batting, fielding, and pitching, has an \(R^2\) of
-`r stmr2`, an adjusted \(R^2\) of `r stmar2` and an AIC of `r stmAIC`.
+`r stmr2`, an adjusted \(R^2\) of `r stmar2`, an AIC of `r stmAIC`, and an RMSE
+on the training set of `r stmRMSE`. The p-value for the F-test with a critical
+value of `r stmF[[1]]` with `r stmF[[2]]` and `r stmF[[3]]` degrees of freedom
+is below machine error (`r stmFp`).
 
 ### Discussion
-The first item for discussion is the observation that the intercept does **not**
-change between the null (intercept-only) model and the saturated (all variables
-included) model. There are 162 games in a baseball season. According to both the
-null and saturated models, given no other information, a team will *lose*
-slightly more than half its games. Whereas in the stepwise model allowing for
-pairwise interactions within classes, given no other information, a team will
-*win* slightly more than half of its games. Apparently, inteactions unearth
-somewhat more information about why teams **lose** rather than why they **win**.
+The first item for discussion is the observation that while the intercept does
+not change between the null model and the saturated model, it does decrease for
+the model allowing within class pairwise interactions. There are 162 games in a
+baseball season. According to all the models, given no other information, a team
+will lose slightly more than half its games. Apparently, interctions in the
+stepwise model unearth somewhat more information about why teams win.
 
 The stepwise model has the best \(R^2\) of the three and the best AIC. Using
 accepted rules of thumb, a difference of more than 10 indicates no support for
@@ -472,16 +527,16 @@ non-interactive coefficients.
  * Curious
    * Hitting doubles get runners on base; why negative?
    * Turning double plays reduce baserunners; why negative?
-   * Giving up walks allows the other team free baserunners; its coefficient is
-   both insignificant and near 0.
-   * Giving up hits allows the other team baserunners; its coefficient is
-   both insignificant and near 0.
+   * Giving up walks allows the other team free baserunners; negative
+   coefficient makes sense but why insignificant?
+   * Giving up hits allows the other team baserunners; why positive athough
+   insignificant?
 
 An absolutely fascinating observation. In the first draft of this exercise,
 `TEAM_BATTING_HR` was removed due to its high correlation with
-`TEAM_PITCHING_HR`. Note the coefficients, batting is +10 and pitching is -7.
-However, this is such as strong indicator, that in the first run, pitching was
-given a *postive* coefficient of around +3. In hindsight this is because
+`TEAM_PITCHING_HR`. Note the coefficients, batting is almost +12 and pitching is
+-9. However, this is such as strong indicator, that in the first run, pitching
+was given a *postive* coefficient of around +3. In hindsight this is because
 *it was being used as an indicator for* ***batting!!*** The correlation allowed
 the use of pitching HRs as an indicator for the hidden batting HRs! Once both
 were restored to the model, the logical coefficients surfaced. Another reason
@@ -489,17 +544,14 @@ why models should not be trusted out of the box, but all model results should
 be reviewed for sanity and sense!!
 
 The curiosities above can *possibly* be resolved by looking at the interaction
-terms. When giving up walks is interacted with strikeouts,
-`TEAM_PITCHING_BB:TEAM_PITCHING_SO`, the coefficent is positive and significant.
-Perhaps pitchers with many strikeouts also walk a lot of batters so giving up
-walks on its own is less relevant. Similarly, the interaction between giving
-up hits and strikeouts, `TEAM_PITCHING_H:TEAM_PITCHING_SO `, is highly negative
-and significant. Once again, it probably captures most of the giving up hits
-information making the singleton less relevant.
+terms. The interaction between giving up hits and strikeouts,
+`TEAM_PITCHING_H:TEAM_PITCHING_SO `, is highly negative and significant. It
+probably captures most of the giving up hits information making the singleton
+less relevant.
 
 A possible explanation for the negative coefficent for getting double plays, is
 that double plays require at least two people on base. That means that the
-oppenent has a lot of base runners, which is very highly correlated with
+opponent has a lot of base runners, which is very highly correlated with
 scoring.
 
 The behavior of doubles remains confusing. Unless its hiding something like
@@ -534,6 +586,43 @@ possible. This includes inherent recognition of parsimony. As discussed in the
 previous section, for an AIC difference of 10 or greater, the model with the
 higher AIC has effectively no support. The stepwise model with within-class
 pairwise interactions had the lowest AIC by hundreds. 
+
+General inferences about the nature of the coefficients is in the previous
+section. The fascinating example of how multi-collinearity can override logic is
+also discussed in the previous secton.
+
+In order to make inferences from the model, the incoming data needs to be
+processed in the exact same way:
+
+ 1. Mean imputation
+ 2. Box-Cox with the selected lambdas
+ 3. Mean imputation again to remove `Inf` issues
+ 4. Centering and scaling
+ 
+### Model Evaluations
+In the table below are the RMSE, \(R^2\), and significance of the F-statistic
+for each of the three models as applied to the **testing** set. 
+
+```{r buildTests}
+MBtstlng <- BCL[MBtstlng]
+MBtstlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
+MBtstlng[, Lambda := NULL]
+MBtstlngSC <- copy(MBtstlng)
+
+# Remove infinities
+MBtstlngSC[, Value := ifelse(is.infinite(Value), NA, Value)]
+
+# Center and Scale
+MBtstlngSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+       keyby = Metric]
+MBtstlngUnscale <- MBtstlngSC[, .(Mean = mean(Value), SD = sd(Value)),
+                          keyby = Metric]
+MBtstlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+MBtstSC <- dcast(MBtstlngSC, INDEX ~ Metric, value.var = 'Value')
+MBtstSC[, TARGET_WINS := TARGET_WINS * 
+          MBtstlngUnscale[Metric == 'TARGET_WINS', SD] +
+          MBtstlngUnscale[Metric == 'TARGET_WINS', Mean]]
+```
 
 # References
 
