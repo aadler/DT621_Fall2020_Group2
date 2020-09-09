@@ -303,7 +303,7 @@ setkey(BCL, Metric)
 knitr::kable(BCL, digits = 2L, caption = 'Hand-selected Box-Cox Lambdas')
 
 # Left join MBtrnlng to BCL. 
-MBtrnlng <- BCL[MBtrnlng]
+MBtrnlng <- BCL[MBtrnlng, on = 'Metric']
 
 # Transform data where there are selected lambdas
 MBtrnlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
@@ -488,15 +488,39 @@ baseball season. According to all the models, given no other information, a team
 will lose slightly more than half its games. Apparently, interctions in the
 stepwise model unearth somewhat more information about why teams win.
 
-The stepwise model has the best \(R^2\) of the three and the best AIC. Using
-accepted rules of thumb, a difference of more than 10 indicates no support for
-the model with the higher AIC. The magnitude is irrelevant; it is a function of
-the number of observations. The difference between the AIC of the saturated
-model and the step model is
+#### Statistics
+The stepwise model has the best \(R^2\), adjusted  \(R^2\), and AIC of the three
+models. Using accepted rules of thumb, a difference of more than 10 indicates no
+support for the model with the higher AIC. The magnitude is irrelevant; it is a
+function of the number of observations. The difference between the AIC of the
+saturated model and the step model is
 `r prettyNum(AIC(saturatedModel) - AIC(stepModel), digits = 2L)`. This shows
 that the saturated model, and obviously the null model, should be completely
 ignored in favor of the stepwise model with pairwise within class interactions.
 
+#### Residual Plots
+```{r residPlots, fig.width=7}
+par(mfrow = c(2, 2))
+plot(saturatedModel$fitted.values, studres(saturatedModel),
+     main = 'Saturated Model', xlab = 'Predicted Values',
+     ylab = 'Studentized Residuals', xlim = c(0, 160), ylim = c(-6, 6))
+plot(stepModel$fitted.values, studres(stepModel),
+     main = 'Stepwise Pairwise Model', xlab = 'Predicted Values',
+     ylab = 'Studentized Residuals', xlim = c(0, 160), ylim = c(-6, 6))
+plot(nullModel$fitted.values, studres(nullModel),
+     main = 'Null Model', xlab = 'Predicted Values',
+     ylab = 'Studentized Residuals', xlim = c(0, 160), ylim = c(-6, 6))
+par(mfrow = c(1, 1))
+```
+
+Both the saturated and the stepwise models look to have a basically normal
+distribution of their residuals. The null model returns a single value,
+explaining the bizarness of the graph.
+
+The **actual** model to be used for the prediction will be the model which
+returns the best RMSE and MAPE on the test set.
+
+#### Explanation of Selected Model
 Most of the coefficients are reasonable within the context of the game of
 baseball. These two statements are axiomatic:
   
@@ -585,7 +609,8 @@ As a devout follower of Burnham & Anderson (2002), I prefer to use AIC whenever
 possible. This includes inherent recognition of parsimony. As discussed in the
 previous section, for an AIC difference of 10 or greater, the model with the
 higher AIC has effectively no support. The stepwise model with within-class
-pairwise interactions had the lowest AIC by hundreds. 
+pairwise interactions had the lowest AIC by hundreds. The various statistics and
+plots requested for the training data are also in the previous section.
 
 General inferences about the nature of the coefficients is in the previous
 section. The fascinating example of how multi-collinearity can override logic is
@@ -600,11 +625,11 @@ processed in the exact same way:
  4. Centering and scaling
  
 ### Model Evaluations
-In the table below are the RMSE, \(R^2\), and significance of the F-statistic
-for each of the three models as applied to the **testing** set. 
+In the table below are the RMSE and MAPE of each of the three models developed
+above when applied to the **testing** set.
 
-```{r buildTests}
-MBtstlng <- BCL[MBtstlng]
+```{r buildTestSet}
+MBtstlng <- BCL[MBtstlng, on = 'Metric']
 MBtstlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
 MBtstlng[, Lambda := NULL]
 MBtstlngSC <- copy(MBtstlng)
@@ -622,7 +647,27 @@ MBtstSC <- dcast(MBtstlngSC, INDEX ~ Metric, value.var = 'Value')
 MBtstSC[, TARGET_WINS := TARGET_WINS * 
           MBtstlngUnscale[Metric == 'TARGET_WINS', SD] +
           MBtstlngUnscale[Metric == 'TARGET_WINS', Mean]]
+nmP <- predict(nullModel, MBtstSC)
+smP <- predict(saturatedModel, MBtstSC)
+stmP <- predict(stepModel, MBtstSC)
+nmRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - nmP) ^ 2))
+nmMAPE <- mean(abs((MBtstSC$TARGET_WINS - nmP) / MBtstSC$TARGET_WINS))
+smRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - smP) ^ 2))
+smMAPE <- mean(abs((MBtstSC$TARGET_WINS - smP) / MBtstSC$TARGET_WINS))
+stmRMSE <- sqrt(mean((MBtstSC$TARGET_WINS - stmP) ^ 2))
+stmMAPE <- mean(abs((MBtstSC$TARGET_WINS - stmP) / MBtstSC$TARGET_WINS))
+knitr::kable(data.frame(Model = c("Null", "Saturated", "Stepwise Pairwise"),
+                        RMSE = c(nmRMSE, smRMSE, stmRMSE),
+                        MAPE = c(nmMAPE, smMAPE, stmMAPE)),
+             digits = 3L, caption = 'Test Set Results')
 ```
+
+The stepwise model allowing for pairwise interactions is the winner in both
+cases, as was expected.
+
+### Predictions
+We will use the stepwise-pairwise model to predict `TARGET_WINS` for the
+separately provided evaluation set.
 
 # References
 
@@ -651,6 +696,8 @@ They are reproduced in the appendix for review and comment.
 ```
 ```{r corrgram, echo=TRUE, eval=FALSE}
 ```
+```{r testTrain, echo=TRUE, eval=FALSE}
+```
 ```{r imputeMean, echo=TRUE, eval=FALSE}
 ```
 ```{r centerScale, echo=TRUE, eval=FALSE}
@@ -670,4 +717,8 @@ They are reproduced in the appendix for review and comment.
 ```{r satOutput, echo=TRUE, eval=FALSE}
 ```
 ```{r stepOutput, echo=TRUE, eval=FALSE}
+```
+```{r residPlots, echo=TRUE, eval=FALSE}
+```
+```{r buildTestSet, echo=TRUE, eval=FALSE}
 ```
