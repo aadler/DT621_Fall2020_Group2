@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 ```{r loadPackages}
+library(MASS)
 library(corrplot)
 library(RColorBrewer)
 library(ggplot2)
@@ -352,18 +353,67 @@ that needs to be discussed. Are you keeping the model even though it is counter
 intuitive? Why? The boss needs to know.
 
 ## Analysis
-At this point we have a set of transformed independent variables on which we
-can build a model. The target variable, `TARGET_WINS` does not need to be
-scaled. Normally, we would have thrown everything into `caret`, but for the
-purposes of this homework, we will use the `stepAIC` function from the `MASS`
-package to perform a backwards-stepwise linear regression using AIC as our
-goodness of fit metric. For ease, we will cast the dataset we were using from
-tall back to wide first.
+Normally, we would have thrown everything into `caret`, but for the purposes of
+this homework, we will use calls to base R for the null and saturated models and
+the `stepAIC` function from the `MASS` package to perform a stepwise linear
+regression using AIC as our goodness of fit metric.
 
-```{r lm1}
+At this point we have a set of transformed independent variables on which we
+can build a model. The reasoning for the variable selection and transformations
+are in previous sections. For ease, we will cast the dataset we were using from
+tall back to wide first. Furthermore, the target variable, `TARGET_WINS` does
+not need to be scaled.
+
+We will show three models: the null model, the saturated model, and the model
+resulting from the stepwise regression. For the regression, we will consider at
+most pairwise interactions within the classes of metrics.
+
+```{r lm, include=FALSE}
 MBsc <- dcast(MBmeltSC, INDEX ~ Metric, value.var = 'Value')
+# Replace TARGET_WINS with original. Could have restored it from MBmeltUnscale.
+MBsc[, TARGET_WINS := MB[, TARGET_WINS]]
+# Removing INDEX for convenience. Could have used "-INDEX" in the formula call.
+MBsc[, INDEX := NULL]
+
+nullModel <- lm(TARGET_WINS ~ 1, data = MBsc)
+snm <- summary(nullModel)
+
+saturatedModel <- lm(TARGET_WINS ~ ., data = MBsc)
+ssm <- summary(saturatedModel)
+
+stepModel <- stepAIC(saturatedModel, scope = list(upper = ~
+  (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
+   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_SO) ^ 2 + (TEAM_FIELDING_DP +
+   TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB + TEAM_PITCHING_H +
+   TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, lower = ~ 1), direction = 'both')
+
+sstm <- summary(stepModel)
+```
+```{r nullOutput}
+knitr::kable(snm$coefficients, digits = 3L,
+             caption = 'Null Model Output')
+```
+The null model has an adjusted \(R^2\) of
+`r prettyNum(snm$adj.r.squared, digits = 3L)` and an AIC of
+`r prettyNum(AIC(nullModel), digits = 2L, big.mark = ',')`.
+
+```{r satOutput}
+knitr::kable(ssm$coefficients, digits = 3L,
+             caption = 'Saturated Model Output')
+```
+The saturated model has an adjusted \(R^2\) of
+`r prettyNum(ssm$adj.r.squared, digits = 3L)` and an AIC of
+`r prettyNum(AIC(saturatedModel), digits = 2L, big.mark = ',')`.
+
+```{r stepOutput}
+knitr::kable(sstm$coefficients, digits = 3L,
+             caption = 'Step Model with Pairwise Class Interactions Output')
 ```
 
+The step model allowing pairwise interactions between the four classes of
+metric: base running, batting, fielding, and pitching, has an adjusted \(R^2\)
+of `r prettyNum(sstm$adj.r.squared, digits = 3L)` and an AIC of
+`r prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')`.
 
 
 # References
@@ -401,4 +451,12 @@ They are reproduced in the appendix for review and comment.
 ```{r reScale, echo=TRUE, eval=FALSE}
 ```
 ```{r reImputeThenScale, echo=TRUE, eval=FALSE}
+```
+```{r lm, echo=TRUE, eval=FALSE}
+```
+```{r nullOutput, echo=TRUE, eval=FALSE}
+```
+```{r satOutput, echo=TRUE, eval=FALSE}
+```
+```{r stepOutput, echo=TRUE, eval=FALSE}
 ```
