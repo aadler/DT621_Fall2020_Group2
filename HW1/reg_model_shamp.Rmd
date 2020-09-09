@@ -1,0 +1,317 @@
+---
+title: "HW! - Regression Model - 621"
+author: "Jeff Shamp"
+date: "9/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(mice)
+library(psych)
+```
+
+
+
+## Data
+
+We have the mlb training data set. See `missing_value_eda.Rmd` for details on data distribution. 
+
+We saw from the above file that at least one variable should be omitted for low reporting of data. There are also outlier concerns for several of the variables, namely `TEAM_PITCHING_SO`. 
+
+First, we will look into obvious outliers in the data set and remove them. There appears to be enough data in the training set to naive yet cautious approach to outlier removal. 
+
+```{r}
+set.seed(9450)
+train_df<- 
+  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-training-data.csv")
+train_df<- 
+  train_df %>% 
+  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  mutate_if(is.integer, as.numeric)
+```
+
+
+
+### Isolate base hits. 
+
+The variable `TEAM_BATTING_H` is all hits. We will separate out singles from the rest. 
+
+```{r}
+train_df<- 
+    train_df %>%
+    mutate(TEAM_BATTING_1B =
+           TEAM_BATTING_H -
+           (TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR)) 
+  
+```
+
+
+Looking at some distributions. 
+
+```{r}
+train_df %>%
+  ggplot(aes(TEAM_BATTING_1B)) +
+  geom_histogram(na.rm = TRUE, binwidth = 1) +
+   geom_vline(xintercept = mean(
+              train_df$TEAM_BATTING_1B,
+              na.rm = TRUE), color="red") 
+```
+
+## Outlier Removal
+
+Again, we will take a cautious approach to removing outliers. Removing values that appear to be so far out from the normal that is it seems likely that there is some kind of data input issue. 
+
+```{r}
+train_df %>%
+  pivot_longer(everything(), 
+               names_to ="Variable", 
+               values_to="Value") %>%
+  ggplot(aes(x=Variable, y=Value)) +
+  geom_boxplot(na.rm = TRUE) + coord_flip()
+```
+
+There are some clear issues with hitting singles and some that we know about with strikeouts. We will remove the SO outliers first and see what needs to happen with singles hitting. These appear to right skewed so we will use median and IQR to remove outliers. 
+
+```{r}
+train_df<-
+train_df %>%
+  na.omit() %>%
+  summarize(iqr = IQR(TEAM_PITCHING_SO)) %>%
+  bind_cols(
+            train_df 
+            )  %>%
+  filter(
+    TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO,
+                                probs=c(0.25), 
+                                na.rm = TRUE) - 1.5*iqr, 
+    TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, 
+                                probs=c(0.75), 
+                                na.rm=TRUE) + 1.5*iqr
+        ) %>%
+  select(-iqr)
+
+train_df %>%
+  pivot_longer(everything(), 
+               names_to ="Variable", 
+               values_to="Value") %>%
+  ggplot(aes(x=Variable, y=Value)) +
+  geom_boxplot(na.rm = TRUE) + coord_flip()
+```
+
+We will take a similar approach to removing outliers for pitching hitting allowed. At least one seems unrealisticly extreme. 
+
+
+```{r}
+train_df<-
+train_df %>%
+  na.omit() %>%
+  summarize(iqr = IQR(TEAM_PITCHING_H)) %>%
+  bind_cols(
+            train_df 
+            )  %>%
+  filter(
+    TEAM_PITCHING_H > quantile(TEAM_PITCHING_H,
+                                probs=c(0.25), 
+                                na.rm = TRUE) - 1.5*iqr, 
+    TEAM_PITCHING_H < quantile(TEAM_PITCHING_H, 
+                                probs=c(0.75), 
+                                na.rm=TRUE) + 1.5*iqr
+        ) %>%
+  select(-iqr)
+
+```
+
+
+```{r}
+train_df %>%
+  pivot_longer(everything(), 
+               names_to ="Variable", 
+               values_to="Value") %>%
+  ggplot(aes(x=Variable, y=Value)) +
+  geom_boxplot(na.rm = TRUE) + coord_flip()
+```
+
+This has eliminated what appears to be the most extreme outliers. There are still large outlier sets for Errors and stolen bases, but none that seem to dwarf the other variables. Basically, things appear to be on a scale that seems logical given the data and source of information that we have. 
+
+## Imputation of Values
+
+From the `missing_value_eda.Rmd` the vast majority of the data is complete with only a few variables with missing values. We will use the "mice" imputation method [described here](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3074241/#:~:text=Missing%20data%20are%20a%20common,method%20of%20addressing%20missing%20data.).
+
+We will use the predictive mean matching method. 
+
+```{r, message=FALSE}
+train_df <- complete(mice(data = train_df, 
+                         method = "norm", 
+                         seed = 9450, 
+                         print=FALSE), 3)
+```
+
+
+## Feature Engineering
+
+With outliers removed and missing values imputated via MICE, we can add a few features. We will take the obvious and approximate the following features; on-base percent, slugging, and on-base plu slugging. To reduce colinearity, we may only keep on-base percent and slugging. 
+
+### On Base Percentage
+
+On-base percentage is calculated using this formula:
+
+${\displaystyle OBP={\frac {H+BB+HBP}{AB+BB+HBP+SF}}}$
+
+We are missing several of the needed variables but we can approximate this percentage in the following way. 
+
+${\displaystyle \sim OBP={\frac {H+BB}{SO_{batting}+BB+H}}}$
+
+We do not have the total At-bats for each observation so we will approximate at-bats by summing batting strikeouts and total hits. 
+
+### Slugging Percentage
+
+Slugging is calculated in the following way
+
+${\displaystyle \mathrm {SLG} ={\frac {({\mathit {1B}})+(2\times {\mathit {2B}})+(3\times {\mathit {3B}})+(4\times {\mathit {HR}})}{AB}}}$
+
+We will take the same approximation for at-bats. 
+
+${\displaystyle \mathrm {\sim SLG} ={\frac {({\mathit {1B}})+(2\times {\mathit {2B}})+(3\times {\mathit {3B}})+(4\times {\mathit {HR}})}{SO_{batting} + H + BB}}}$
+
+
+
+```{r}
+train_df<-
+train_df %>%
+  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
+         OBP = (TEAM_BATTING_H + TEAM_BATTING_BB)/AB,
+         SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>%
+  # Removing AB and total hits
+  select(-c(AB, TEAM_BATTING_H))
+```
+
+
+
+## Modeling
+
+We will start with a simple linear model with resampling and see what kind of results we get. 
+
+
+```{r}
+lm_reg = lm(data=train_df, TARGET_WINS ~ .)
+summary(lm_reg)
+```
+
+
+Triples and singles seem to be candidates to remove from the analysis. 
+
+
+```{r}
+lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
+          TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
+          TEAM_PITCHING_HR+ TEAM_PITCHING_BB+TEAM_PITCHING_SO+TEAM_PITCHING_H+
+          TEAM_FIELDING_E+ TEAM_FIELDING_DP+OBP+ SLG, data=train_df)
+summary(lm_1)
+```
+
+Let's take this backward selection process and use it in a resampling scheme and see how our R values hold up. 
+
+```{r}
+folds<- vfold_cv(train_df,
+                 v = 10)
+
+lm_model<- 
+  linear_reg() %>%
+  set_engine(engine="lm")
+
+lm_wf<- 
+  workflow() %>%
+  add_formula(
+    TARGET_WINS ~ 
+          TEAM_BATTING_2B +TEAM_BATTING_HR+
+          TEAM_BATTING_BB +TEAM_BATTING_SO+ 
+          TEAM_BASERUN_SB +TEAM_BASERUN_CS+ 
+          TEAM_PITCHING_HR +TEAM_PITCHING_BB+
+          TEAM_PITCHING_SO +TEAM_PITCHING_H+
+          TEAM_FIELDING_E +TEAM_FIELDING_DP+
+          OBP+ SLG) %>%
+  add_model(lm_model)
+
+lm_resample<- 
+  fit_resamples(
+    lm_wf,
+    folds, 
+    control = control_resamples(save_pred = TRUE)
+  )
+
+lm_resample %>%
+  collect_metrics()
+```
+So the metrics didn't tank with cross validation, that's good. Let's fit the entire training data one last time and look at $R^{2}$ and RMSE. 
+
+```{r}
+results_train<-
+  lm_wf %>%
+  fit(train_df) %>%
+  predict(new_data = train_df) %>%
+  mutate(
+    truth = train_df$TARGET_WINS,
+    model = "lm"
+  )
+
+multi_metric<- metric_set(rmse, rsq)
+
+results_train %>%
+  multi_metric(truth=truth, estimate = .pred)
+  
+```
+
+## Test Data
+
+Let's prep, fit, and evaluate the testing data. 
+
+```{r}
+test_df<- 
+  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-evaluation-data.csv")
+test_df<- 
+  test_df %>% 
+  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  mutate(TEAM_BATTING_1B =
+         TEAM_BATTING_H -
+         (TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR)) %>%
+  mutate_if(is.integer, as.numeric)
+
+test_df <- complete(mice(data = test_df,
+                         method = "norm",
+                         seed = 9450,
+                         print=FALSE), 3)
+
+test_df<-
+  test_df %>%
+  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
+         OBP = (TEAM_BATTING_H + TEAM_BATTING_BB)/AB,
+         SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>%
+  select(-c(AB, TEAM_BATTING_H))
+
+
+```
+
+
+```{r}
+test_pred<-
+lm_wf %>%
+  fit(train_df) %>%
+  predict(new_data = test_df) %>%
+  rename(predictions = .pred)
+
+summary(test_pred)
+```
+
+Wow. max of 944, not good. How many terrible predictions are there? Let's filter by predictions beyond the currentl MLB season wins record of 116. 
+
+```{r}
+test_pred %>%
+  filter(predictions >= 116)
+```
+
+Ten beyond the record, two of which are somewhat reasonable. The rest are not reasonable. 
+
+
