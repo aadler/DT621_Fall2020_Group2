@@ -144,7 +144,7 @@ We will use the predictive mean matching method.
 
 ```{r, message=FALSE}
 train_df <- complete(mice(data = train_df, 
-                         method = "norm", 
+                         method = "pmm", 
                          seed = 9450, 
                          print=FALSE), 3)
 ```
@@ -201,16 +201,27 @@ summary(lm_reg)
 ```
 
 
-Triples and singles seem to be candidates to remove from the analysis. 
+Triples, singles, and pitching hits seem to be candidates to remove from the analysis. 
 
 
 ```{r}
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
-          TEAM_PITCHING_HR+ TEAM_PITCHING_BB+TEAM_PITCHING_SO+TEAM_PITCHING_H+
+          TEAM_PITCHING_HR+ TEAM_PITCHING_BB+TEAM_PITCHING_H+
           TEAM_FIELDING_E+ TEAM_FIELDING_DP+OBP+ SLG, data=train_df)
 summary(lm_1)
 ```
+
+## Remove Outliers that Influence Fit
+
+We need further outlier treatment. We will use Cook's distance to remove outliers that are influencing the fit of the model above. 
+
+```{r}
+cooks_dis<- cooks.distance(lm_1)
+influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_df)))])
+train_df<- train_df[-influential, ]
+```
+
 
 Let's take this backward selection process and use it in a resampling scheme and see how our R values hold up. 
 
@@ -261,7 +272,7 @@ multi_metric<- metric_set(rmse, rsq)
 
 results_train %>%
   multi_metric(truth=truth, estimate = .pred)
-  
+
 ```
 
 ## Test Data
@@ -280,7 +291,7 @@ test_df<-
   mutate_if(is.integer, as.numeric)
 
 test_df <- complete(mice(data = test_df,
-                         method = "norm",
+                         method = "pmm",
                          seed = 9450,
                          print=FALSE), 3)
 
@@ -305,13 +316,14 @@ lm_wf %>%
 summary(test_pred)
 ```
 
-Wow. max of 944, not good. How many terrible predictions are there? Let's filter by predictions beyond the currentl MLB season wins record of 116. 
+Wow. max of 1231, not good. How many terrible predictions are there? Let's filter by predictions beyond the currentl MLB season wins record of 116. 
 
 ```{r}
 test_pred %>%
-  filter(predictions >= 116)
+  filter(predictions >= 116) %>%
+  arrange(predictions)
 ```
 
-Ten beyond the record, two of which are somewhat reasonable. The rest are not reasonable. 
+Nine beyond the record, three of which are somewhat reasonable. The rest are not reasonable. 
 
 
