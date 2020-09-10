@@ -31,7 +31,8 @@ library(mctest)
 library(caret)
 
 # Load training data set
-train_df = read.csv("C:/Users/Deokinanan/Desktop/2019 -2021 CUNY SPS/FALL 2020/DATA 621/WEEK 3/moneyball-training-data.csv")
+theURL = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv"
+train_df = data.frame(read.csv(file = theURL, header = TRUE, sep = ","))
 train_df = subset(train_df, select = -c(INDEX))
 ```
 
@@ -127,7 +128,7 @@ A stepwise variable selection model is conducted to determine what are the varia
 
 Here the dependent variable is the continuous variable, `TARGET_WINS`, and the independent variables are the full model to identify the most contributing predictors. In addition, a robust method for estimating the accuracy of a model, the k-fold cross-validation method, was performed evaluate the model performance on different subset of the training data and then calculate the average prediction error rate. 
 
-After the steps, the final model resulted below, with $adj. R^2 = 0.42$, suggesting that this model accounts for nearly 42% of the variation in the dependent variable with the independent variables, which is acceptable as a good model. Within the method of `lmStepAIC`, AIC (Akaike Information Criteria) quantifies the amount of information loss due to simplification. That is, based on the AIC, the final model outputted is the simplest model without impacting much on the performance. 
+After the steps, the final model resulted below, with $adj. R^2 = 0.43$, suggesting that this model accounts for nearly 42% of the variation in the dependent variable with the independent variables, which is acceptable as a good model. Within the method of `lmStepAIC`, AIC (Akaike Information Criteria) quantifies the amount of information loss due to simplification. That is, based on the AIC, the final model outputted is the simplest model without impacting much on the performance. 
 
 ```{r  message=FALSE, warning=FALSE, paged.print=FALSE}
 # Set up repeated k-fold cross-validation
@@ -155,7 +156,8 @@ Studying the coefficients of the model suggest that winning is in favor if the t
 
 ```{r message=FALSE, warning=FALSE}
 # load the test data
-test_df = read.csv("C:/Users/Deokinanan/Desktop/2019 -2021 CUNY SPS/FALL 2020/DATA 621/WEEK 3/moneyball-evaluation-data.csv")
+theURL = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv"
+test_df = data.frame(read.csv(file = theURL, header = TRUE, sep = ","))
 
 # Data Transformation to match train data
 test_df = complete(mice(data = test_df, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
