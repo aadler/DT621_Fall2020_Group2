@@ -27,13 +27,13 @@ eval_set <- read.csv('data/moneyball-evaluation-data.csv')
 ### How often does the team win?
 
 We are given a data set containing 2,276 records, each of which includes 15 statistics
-and the total number of wins a team had in a given year. On average, the team wins about 
-50% of the games they play (81 games out of 162), with the best season having 146 wins 
-and the worst season having 0 wins. The data is normally distributed and most seasons have 
-between 49 and 112 wins (blue lines below). This means that there aren't too many extreme 
-seasons where the team won significantly more or significantly less games than usual. This 
-serves as a good gut-check for our final predictions; if the predicted wins are too high or 
-too low, we know something is probably off. 
+and the total number of wins a team had in a given year. On average, about 50% of games 
+played are won (81 games out of 162), with the best season having 146 wins and the worst 
+season having 0 wins. The data is normally distributed and most years have between 49 
+and 112 wins (blue lines below). The nature of the distribution means there aren't too 
+many extreme seasons where wins are significantly higher or lower than usual. This serves 
+as a good gut-check for our final predictions; if the predicted wins are too high or too 
+low, we know something in our model is probably off. 
 
 ```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3, fig.width = 5, fig.align = 'center'}
 
