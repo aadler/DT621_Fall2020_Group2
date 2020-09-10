@@ -2,24 +2,21 @@
 title: "DATA 621 - HW1 - Regression Model"
 author: "Samantha Deokinanan"
 date: "September 3, 2020"
-output: html_document
+output:
+  pdf_document: default
 ---
 
-***
-#### Task
-***
+## Task  
 
 *Using the training data set, build at least three different multiple linear regression models, using different variables(or the same variables with different transformations). Since we have not yet covered automated variable selection methods, you should select the variables manually (unless you previously learned Forward or Stepwise selection, etc.). Since you manually selected a variable for inclusion into the model or exclusion into the model, indicate why this was done.*
 
 *Discuss the coefficients in the models, do they make sense? For example, if a team hits a lot of Home Runs, it would be reasonably expected that such a team would win more games. However, if the coefficient is negative (suggesting that the team would lose more games), then that needs to be discussed. Are you keeping the model even though it is counter intuitive? Why? The boss needs to know.*
 
-***
-#### The dataset
-***
+## The Dataset  
 
 The data set contains approximately 2200 records. Each record represents a professional baseball team from the years 1871 to 2006 inclusive. Each record has the performance of the team for the given year, with all of the statistics adjusted to match the performance of a 162 game season. Aim is to predict the number of wins for the team.
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 # The required R packages
 library(tidyverse)
 library(psych)
@@ -31,34 +28,35 @@ library(mctest)
 library(caret)
 
 # Load training data set
-theURL = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv"
+theURL = "https://raw.githubusercontent.com/aadler/
+DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv"
 train_df = data.frame(read.csv(file = theURL, header = TRUE, sep = ","))
 train_df = subset(train_df, select = -c(INDEX))
 ```
 
-
-***
-#### Data Transformation, Outliers and Missing Data
-***
+## Data Transformation, Outliers and Missing Data  
 
 A quick exploration of the data, and it is already apparent that the `TEAM_BATTING_HBP` variable has nearly 92% of the its data missing. Since it would be very difficult to accurately impute such a large proportion, this variable will be excluded from further analysis. 
 
-```{r}
+```{r include=FALSE}
 # Quick Exploration
-sapply(train_df, describe)
+# sapply(train_df, describe)
 
 # Data Transformation
 train_df = subset(train_df, select = -c(TEAM_BATTING_HBP))
 ```
 
-Next, the outlier plots revealed that there are a few extreme values that can influence the analysis. Because the objective is so create a multivariate regression model, declaring an observation as an outlier based on a just one feature could lead to unrealistic inferences. There Cook's distance is use to decide if an individual entity is an extreme value or not.
+Next, the outlier plots revealed that there are a few extreme values that can influence the analysis. Because the objective is so create a multivariate regression model, declaring an observation as an outlier based on a just one feature could lead to unrealistic inferences. Therefore Cook's distance is use to decide if an individual entity is an extreme value or not.
 
-Cook’s distance is a measure computed with respect to a given regression model and therefore is impacted only by the predictors included in the model. It computes the influence exerted by each data point on the response variable. Fitting the full model during this exploratory stage, the process remove the most influential points. Note from the plots that all influential observations are not necessarily outliers. Least than 3% of the data was removed.
+Cook’s distance is a measure computed with respect to a given regression model and therefore is impacted only by the predictors included in the model. It computes the influence exerted by each data point on the response variable. Fitting the full model during this exploratory stage, the process remove the most influential points. Note from the plots that all influential observations are not necessarily outliers. Less than 3% of the data was removed.
 
-```{r}
+```{r include=FALSE}
 # Outlier Plots
 model = lm(TARGET_WINS ~ ., data = train_df)
-ols_plot_diagnostics(model)
+# ols_plot_diagnostics(model)
+p1 = ols_plot_cooksd_chart(model)
+p2 = ols_plot_resid_fit(model)
+p3 = ols_plot_resid_hist(model)
 
 # Remove Outlier
 cooksd = cooks.distance(model)
@@ -67,27 +65,36 @@ train_df = train_df[-c(influential), ]
 
 # New diagnostic plots
 model_new = lm(TARGET_WINS ~ ., data = train_df)
-ols_plot_diagnostics(model_new)
+# ols_plot_diagnostics(model_new)
+p4 = ols_plot_cooksd_chart(model_new)
+p5 = ols_plot_resid_fit(model_new)
+p6 = ols_plot_resid_hist(model_new)
+```
+```{r echo=FALSE, fig.height=7}
+gridExtra::grid.arrange(p1,p4,p2,p5,p3,p6, nrow=3, top = "Before and After Outliers were Removed")
 ```
 
 Now, an investigation is perform to calculate the amount of missing/imputed values in each variable. The plot helps to understand that almost 85% of the samples are not missing any information, whereas below states the percentage of missing values per variables. The method of choice to handle these missing values is imputation using predictive mean matching, to replace missing data with a randomly chosen value from several similar cases.
 
-```{r}
-aggr(train_df, col = c('darkseagreen2','darkslateblue'), numbers = TRUE, sortVars = TRUE, oma = c(10,5,5,3), labels = names(train_df), cex.axis = 0.8, gap = 3, axes = TRUE, Prop = TRUE, ylab = c("Proportion of Missing Data", "Combination"))
+```{r echo=FALSE, fig.height=5}
+aggr(train_df, col = c('darkseagreen2','darkslateblue'), numbers = TRUE, sortVars = FALSE, 
+     oma = c(10,5,5,3), labels = names(train_df), cex.axis = 0.8, gap = 3, axes = TRUE, 
+     Prop = TRUE, ylab = c("Proportion of Missing Data", "Combination"))
 
-train_df.clean = complete(mice(data = train_df, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
-sapply(train_df.clean, describe)
+train_df.clean = complete(mice(data = train_df, method = "pmm", maxit = 5, 
+                               seed = 525, print = FALSE), 3)
+# sapply(train_df.clean, describe)
 ```
 
-***
-#### Initial Tests 
-***
+## Initial Tests 
 
 Because the data consist of variable called `TEAM_BATTING_H`, base hits by batters, i.e. it is linear combination of H = 1B + 2B + 3B + HR, there are concerns of possible multicollinearity. Therefore, the single hits by batter found and base hits were removed. Next, a collinearity diagnostic test is done to examining the diagnostic output for variance inflation factor, tolerance, and Farrar-Glauber F-test. The F-statistic for the variable `TEAM_BATTING_HR` is quite high (42.1158) followed by the variable `TEAM_PITCHING_HR` (F-value of 33.8885). So, the test shows that there are multiple variables that will be the root cause of multicollinearity. Moreover, as expected, there are high partial correlations found to be statistically significant. As a solution to deal with multicollinearity, there are several remedial measures will be used as a result of this diagnostic test. Some included removal of highly correlated variables and stepwise regression analysis were done.
 
-```{r}
+```{r include=FALSE}
 # Data Transformation
-train_df.clean$TEAM_BATTING_1B = train_df.clean$TEAM_BATTING_H - (train_df.clean$TEAM_BATTING_2B + train_df.clean$TEAM_BATTING_3B + train_df.clean$TEAM_BATTING_HR)
+train_df.clean$TEAM_BATTING_1B = train_df.clean$TEAM_BATTING_H - 
+  (train_df.clean$TEAM_BATTING_2B + train_df.clean$TEAM_BATTING_3B + 
+     train_df.clean$TEAM_BATTING_HR)
 train_df.clean = subset(train_df.clean, select = -c(TEAM_BATTING_H))
 
 # Multicollinearity Diagnostic Measures
@@ -100,7 +107,7 @@ model_new = lm(TARGET_WINS ~ ., data = train_df.clean)
 imcdiag(model_new, method = "VIF", all = TRUE)
 ```
 
-```{r, fig.width=7, fig.height=9}
+```{r, fig.width=7, fig.height=7, echo=FALSE}
 # Correlation
 corr = round(cor(train_df.clean), 2)
 corr = cbind(names = rownames(corr), data.frame(corr, row.names=NULL))
@@ -110,66 +117,78 @@ ggplot(data = g.corr, aes(key, names, fill = value)) + geom_tile(color = "white"
  scale_fill_gradient2(low = "darkseagreen2", high = "darkslateblue", mid = "white", 
    midpoint = 0, limit = c(-1,1), space = "Lab", name="Pearson\nCorrelation") +
   theme_minimal() + theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1)) +
- coord_fixed() + geom_text(aes(key, names, label = value), color = "black", size = 3) 
+  coord_fixed() + geom_text(aes(key, names, label = value), color = "black", size = 3) 
 ```
-
 Lastly, because a robust regression process will be performed, higher order polynomials variables were introduced into the full model.
 
-```{r}
-stepdata = cbind(train_df.clean,sapply(train_df.clean[2:length(train_df.clean)], function(x) x^2))
+```{r echo=FALSE}
+stepdata = cbind(train_df.clean,sapply(train_df.clean[2:length(train_df.clean)], 
+                                       function(x) x^2))
 names(stepdata) = make.unique(names(stepdata), sep = "_")
 ```
 
-***
-#### Regression Model #1
-***
+## Regression Model: Stepwise Regression with Repeated k-fold Cross-Validation
 
-A stepwise variable selection model is conducted to determine what are the variables that can help predict the number of wins for the team. The stepwise variable selection allows variables to be added one at a time to the model, as long as the F-statistic is below the specified $\alpha$, in this case $\alpha = 0.05$. However, variables already in the model do not necessarily stay in. The steps evaluate all of the variables already included in the model and remove any variable that has an insignificant F-statistic. Only after this test ends, is the best model found, that is when none of the variables cstepan be excluded and every variable included in the model is significant. 
+A stepwise variable selection model is conducted to determine what are the variables that can help predict the number of wins for the team. The stepwise variable selection allows variables to be added one at a time to the model, as long as the F-statistic is below the specified $\alpha$, in this case $\alpha = 0.05$. However, variables already in the model do not necessarily stay in. The steps evaluate all of the variables already included in the model and remove any variable that has an insignificant F-statistic. Only after this test ends, is the best model found, that is when none of the variables can be excluded and every variable included in the model is significant. 
 
 Here the dependent variable is the continuous variable, `TARGET_WINS`, and the independent variables are the full model to identify the most contributing predictors. In addition, a robust method for estimating the accuracy of a model, the k-fold cross-validation method, was performed evaluate the model performance on different subset of the training data and then calculate the average prediction error rate. 
 
-After the steps, the final model resulted below, with $adj. R^2 = 0.43$, suggesting that this model accounts for nearly 42% of the variation in the dependent variable with the independent variables, which is acceptable as a good model. Within the method of `lmStepAIC`, AIC (Akaike Information Criteria) quantifies the amount of information loss due to simplification. That is, based on the AIC, the final model outputted is the simplest model without impacting much on the performance. 
+After the steps, the final model resulted below, with $adj. R^2 = 0.43$, suggesting that this model accounts for nearly 43% of the variation in the dependent variable with the independent variables, which is acceptable as a good model. With this method of stepwise regression, AIC (Akaike Information Criteria) quantifies the amount of information loss due to simplification. That is, based on the AIC, the final model outputted is the simplest model without impacting much on the performance. 
 
-```{r  message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 # Set up repeated k-fold cross-validation
 set.seed(525)
 train.control = trainControl(method = "cv", number = 10)
 
 # Train the model
-step.model = train(TARGET_WINS ~ ., data = stepdata, method = "lmStepAIC", trControl = train.control, trace = FALSE)
-
-# Model accuracy
-step.model$results
+step.model = train(TARGET_WINS ~ ., data = stepdata, method = "lmStepAIC", 
+                   trControl = train.control, trace = FALSE)
 
 # Final model coefficients
-step.model$finalModel
+step.model$finalModel 
 
 # Summary of the model
-summary(step.model$finalModel)
+mod_sum = summary(step.model$finalModel)  
+
+# Prediction on training data
+predictions = predict(step.model, newdata = stepdata)
 ```
 
-***
-#### Prediction
-***
+```{r echo=FALSE}
+# Model accuracy
+data.frame(r.squared = c(mod_sum[["r.squared"]]), adj.r.squared = c(mod_sum[["adj.r.squared"]]), 
+           rsme = c(sqrt(mean((stepdata$TARGET_WINS - predictions)^2)))) %>% knitr::kable(digits = 2L)
+```
+
+## Prediction
 
 Studying the coefficients of the model suggest that winning is in favor if the team batting hits more doubles, triples and home runs. Moreover, increase in the number of stolen bases, and a decrease in caught steals, double plays, error, and walks allowed would all lead to a win for the batting team. It is noteworthy that the model suggests that a decrease in single hits by batter and an increase in strikeouts by batters which seems counter intuitive. But these variables were kept because when a batter steps to the plate, the player is more likely to strike out than to get a hit. Trying to hit the ball out of the park will come with strikeouts but it will also increase the chances of hitting home runs (even 1B, 2B, 3B), and that is pretty good exchange that most teams are willing carry out.
 
-```{r message=FALSE, warning=FALSE}
+```{r echo=FALSE}
+step.model$finalModel[["coefficients"]] %>% knitr::kable()
+```
+
+Using the test data and the final step model, a comparison in the prediction statistic was conducted. It is apparent that the model's prediction are not too off from the training data. However, the predictions resulted in a higher kurtosis, thus there are expectation of greater extremity of the deviations, and not centered near the mean.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
 # load the test data
-theURL = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv"
+theURL = "https://raw.githubusercontent.com/aadler/
+DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv"
 test_df = data.frame(read.csv(file = theURL, header = TRUE, sep = ","))
 
 # Data Transformation to match train data
 test_df = complete(mice(data = test_df, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
-test_df$TEAM_BATTING_1B = test_df$TEAM_BATTING_H - (test_df$TEAM_BATTING_2B + test_df$TEAM_BATTING_3B + test_df$TEAM_BATTING_HR)
+test_df$TEAM_BATTING_1B = test_df$TEAM_BATTING_H - 
+  (test_df$TEAM_BATTING_2B + test_df$TEAM_BATTING_3B + test_df$TEAM_BATTING_HR)
 test_df = cbind(test_df,sapply(test_df[1:length(test_df)], function(x) x^2))
 names(test_df) = make.unique(names(test_df), sep = "_")
 
 predictions = predict(step.model, newdata = test_df)
 
-results = cbind(dataset = c('Training Data', 'Test Prediction'), bind_rows(describe(train_df$TARGET_WINS), describe(predictions))) 
+results = cbind(dataset = c('Training Data', 'Test Prediction'), 
+                bind_rows(describe(train_df$TARGET_WINS), describe(predictions))) 
 rownames(results) = NULL
 
-results
+results[,-c(2,8,11)] %>% knitr::kable(digits = 2L)
 ```
 
