@@ -14,7 +14,6 @@ library(psych)
 ```
 
 
-
 ## Data
 
 We have the mlb training data set. See `missing_value_eda.Rmd` for details on data distribution. 
@@ -26,10 +25,10 @@ First, we will look into obvious outliers in the data set and remove them. There
 ```{r}
 set.seed(9450)
 train_df<- 
-  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-training-data.csv")
-train_df<- 
-  train_df %>% 
-  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  read.csv("./data/moneyball-training-data.csv")
+train_df <-
+  train_df %>%
+  select(-c(TEAM_BATTING_HBP, -INDEX)) %>%
   mutate_if(is.integer, as.numeric)
 ```
 
@@ -217,6 +216,7 @@ summary(lm_1)
 We need further outlier treatment. We will use Cook's distance to remove outliers that are influencing the fit of the model above. 
 
 ```{r}
+# Base R, disgusting
 cooks_dis<- cooks.distance(lm_1)
 influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_df)))])
 train_df<- train_df[-influential, ]
@@ -281,7 +281,7 @@ Let's prep, fit, and evaluate the testing data.
 
 ```{r}
 test_df<- 
-  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-evaluation-data.csv")
+  read.csv("./data/moneyball-evaluation-data.csv")
 test_df<- 
   test_df %>% 
   select(-c(TEAM_BATTING_HBP, INDEX)) %>%
@@ -325,5 +325,9 @@ test_pred %>%
 ```
 
 Nine beyond the record, three of which are somewhat reasonable. The rest are not reasonable. 
+
+
+
+
 
 
