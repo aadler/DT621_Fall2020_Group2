@@ -2,7 +2,7 @@
 title: "HW! - Regression Model - 621"
 author: "Jeff Shamp"
 date: "9/8/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -14,22 +14,19 @@ library(psych)
 ```
 
 
+## Data Preparation
 
-## Data
-
-We have the mlb training data set. See `missing_value_eda.Rmd` for details on data distribution. 
-
-We saw from the above file that at least one variable should be omitted for low reporting of data. There are also outlier concerns for several of the variables, namely `TEAM_PITCHING_SO`. 
+We saw from the above that at least one variable should be omitted for low reporting of data. There are also outlier concerns for several of the variables, namely `TEAM_PITCHING_SO`. 
 
 First, we will look into obvious outliers in the data set and remove them. There appears to be enough data in the training set to naive yet cautious approach to outlier removal. 
 
-```{r}
+```{r load, echo=FALSE}
 set.seed(9450)
 train_df<- 
-  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-training-data.csv")
-train_df<- 
-  train_df %>% 
-  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  read.csv("./data/moneyball-training-data.csv")
+train_df <-
+  train_df %>%
+  select(-c(TEAM_BATTING_HBP, -INDEX)) %>%
   mutate_if(is.integer, as.numeric)
 ```
 
@@ -39,7 +36,7 @@ train_df<-
 
 The variable `TEAM_BATTING_H` is all hits. We will separate out singles from the rest. 
 
-```{r}
+```{r singles, echo=FALSE}
 train_df<- 
     train_df %>%
     mutate(TEAM_BATTING_1B =
@@ -49,22 +46,11 @@ train_df<-
 ```
 
 
-Looking at some distributions. 
+### Outlier Removal
 
-```{r}
-train_df %>%
-  ggplot(aes(TEAM_BATTING_1B)) +
-  geom_histogram(na.rm = TRUE, binwidth = 1) +
-   geom_vline(xintercept = mean(
-              train_df$TEAM_BATTING_1B,
-              na.rm = TRUE), color="red") 
-```
+Again, we will take a cautious approach to removing outliers at first. Removing values that appear to be so far out from the normal that is it seems likely that there is some kind of data input issue. 
 
-## Outlier Removal
-
-Again, we will take a cautious approach to removing outliers. Removing values that appear to be so far out from the normal that is it seems likely that there is some kind of data input issue. 
-
-```{r}
+```{r outliers_1, echo=FALSE}
 train_df %>%
   pivot_longer(everything(), 
                names_to ="Variable", 
@@ -73,9 +59,9 @@ train_df %>%
   geom_boxplot(na.rm = TRUE) + coord_flip()
 ```
 
-There are some clear issues with hitting singles and some that we know about with strikeouts. We will remove the SO outliers first and see what needs to happen with singles hitting. These appear to right skewed so we will use median and IQR to remove outliers. 
+There are some clear issues with hitting singles and some that we know about with strikeouts. We will remove the `SO` outliers first and see what needs to happen with singles hitting. These appear to right skewed so we will use median and IQR to remove outliers. 
 
-```{r}
+```{r iqr_removal_SO, echo=FALSE}
 train_df<-
 train_df %>%
   na.omit() %>%
@@ -104,7 +90,7 @@ train_df %>%
 We will take a similar approach to removing outliers for pitching hitting allowed. At least one seems unrealisticly extreme. 
 
 
-```{r}
+```{r iqr_removal_H, echo=FALSE}
 train_df<-
 train_df %>%
   na.omit() %>%
@@ -125,7 +111,7 @@ train_df %>%
 ```
 
 
-```{r}
+```{r outlier_boxplot, echo=FALSE}
 train_df %>%
   pivot_longer(everything(), 
                names_to ="Variable", 
@@ -142,7 +128,7 @@ From the `missing_value_eda.Rmd` the vast majority of the data is complete with 
 
 We will use the predictive mean matching method. 
 
-```{r, message=FALSE}
+```{r impute_train,echo=FALSE, message=FALSE, warning=FALSE}
 train_df <- complete(mice(data = train_df, 
                          method = "pmm", 
                          seed = 9450, 
@@ -152,19 +138,8 @@ train_df <- complete(mice(data = train_df,
 
 ## Feature Engineering
 
-With outliers removed and missing values imputated via MICE, we can add a few features. We will take the obvious and approximate the following features; on-base percent, slugging, and on-base plu slugging. To reduce colinearity, we may only keep on-base percent and slugging. 
+With outliers removed and missing values imputed via MICE, we can add a few features. We will take the obvious and approximate the slugging feature.
 
-### On Base Percentage
-
-On-base percentage is calculated using this formula:
-
-${\displaystyle OBP={\frac {H+BB+HBP}{AB+BB+HBP+SF}}}$
-
-We are missing several of the needed variables but we can approximate this percentage in the following way. 
-
-${\displaystyle \sim OBP={\frac {H+BB}{SO_{batting}+BB+H}}}$
-
-We do not have the total At-bats for each observation so we will approximate at-bats by summing batting strikeouts and total hits. 
 
 ### Slugging Percentage
 
@@ -178,11 +153,10 @@ ${\displaystyle \mathrm {\sim SLG} ={\frac {({\mathit {1B}})+(2\times {\mathit {
 
 
 
-```{r}
+```{r make_slg_obp, echo=FALSE}
 train_df<-
 train_df %>%
   mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
-         OBP = (TEAM_BATTING_H + TEAM_BATTING_BB)/AB,
          SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>%
   # Removing AB and total hits
   select(-c(AB, TEAM_BATTING_H))
@@ -192,40 +166,47 @@ train_df %>%
 
 ## Modeling
 
-We will start with a simple linear model with resampling and see what kind of results we get. 
+We will start with a simple linear model and select out features based on null hypothesis testing for non-zero slope. 
 
+Below is the output of coefficients for backward selection model. 
 
-```{r}
+```{r lm_first, echo=FALSE, eval=FALSE}
 lm_reg = lm(data=train_df, TARGET_WINS ~ .)
 summary(lm_reg)
 ```
 
 
-Triples, singles, and pitching hits seem to be candidates to remove from the analysis. 
-
-
-```{r}
+```{r lm_selected, echo=FALSE}
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
-          TEAM_PITCHING_HR+ TEAM_PITCHING_BB+TEAM_PITCHING_H+
-          TEAM_FIELDING_E+ TEAM_FIELDING_DP+OBP+ SLG, data=train_df)
-summary(lm_1)
+          TEAM_PITCHING_HR+ TEAM_PITCHING_H+
+          TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_df)
+knitr::kable(lm_1$coefficients, digits = 3L)
 ```
 
-## Remove Outliers that Influence Fit
+### Model Coefficient Discussion
 
-We need further outlier treatment. We will use Cook's distance to remove outliers that are influencing the fit of the model above. 
+First, we are keeping the coefficient for `TEAM_BATTING_HR` since it's p-value is marginally above the general threshold and knowledge of the game suggests it is important. There are some counter intuitive results, which is expected given that baseball is a messy, imprecise game that has evolved over time. To that end, we should expect some seemingly strange results from algorithmic regression. We used a combination of domain knowledge and data analysis to justify retaining features. 
 
-```{r}
+Fielding double plays and batting doubles both appear to have negative impacts on wins even though they _should_ be postive impacts. Turning double plays, while a good for the defensive team, may suggest a larger, negative issue. Namely, weak pitching that leads to runners on base. Similarly, batting doubles, leaves runners open to double plays. Allowed hits by pitching, caught stealing, and batting strike-outs are all counter intuitive results as well, but they seem to be small contributors and these are events that happen regularly in every game. 
+
+Slugging as an approximation is the major predictor in this regression, by far. The other predictors other than the intercept are orders of magnitude less in predictive value. It should be noted that slugging alone is not a good predictor for wins overall. 
+
+### Remove Outliers that Influence Fit
+
+We need further outlier treatment. We will use Cook's distance to remove outliers that are influencing the fit of the model above. We will use a cutoff of $\frac{4}{N}$. 
+
+```{r cooks_distance, echo=FALSE}
 cooks_dis<- cooks.distance(lm_1)
 influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_df)))])
 train_df<- train_df[-influential, ]
 ```
 
+### Model Evaluation
 
 Let's take this backward selection process and use it in a resampling scheme and see how our R values hold up. 
 
-```{r}
+```{r resample, echo=FALSE}
 folds<- vfold_cv(train_df,
                  v = 10)
 
@@ -236,14 +217,11 @@ lm_model<-
 lm_wf<- 
   workflow() %>%
   add_formula(
-    TARGET_WINS ~ 
-          TEAM_BATTING_2B +TEAM_BATTING_HR+
-          TEAM_BATTING_BB +TEAM_BATTING_SO+ 
-          TEAM_BASERUN_SB +TEAM_BASERUN_CS+ 
-          TEAM_PITCHING_HR +TEAM_PITCHING_BB+
-          TEAM_PITCHING_SO +TEAM_PITCHING_H+
-          TEAM_FIELDING_E +TEAM_FIELDING_DP+
-          OBP+ SLG) %>%
+    TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
+          TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
+          TEAM_PITCHING_HR+ TEAM_PITCHING_H+
+          TEAM_FIELDING_E+ TEAM_FIELDING_DP+ SLG
+    ) %>%
   add_model(lm_model)
 
 lm_resample<- 
@@ -254,11 +232,13 @@ lm_resample<-
   )
 
 lm_resample %>%
-  collect_metrics()
+  collect_metrics() %>%
+  knitr::kable(digits = 3L)
 ```
-So the metrics didn't tank with cross validation, that's good. Let's fit the entire training data one last time and look at $R^{2}$ and RMSE. 
 
-```{r}
+The metrics hold up with cross validation, that's good. Let's fit the entire training dataset one last time and look at $R^{2}$ and RMSE. 
+
+```{r last_fit, echo=FALSE}
 results_train<-
   lm_wf %>%
   fit(train_df) %>%
@@ -271,7 +251,8 @@ results_train<-
 multi_metric<- metric_set(rmse, rsq)
 
 results_train %>%
-  multi_metric(truth=truth, estimate = .pred)
+  multi_metric(truth=truth, estimate = .pred) %>%
+  knitr::kable(digits = 3L)
 
 ```
 
@@ -279,9 +260,9 @@ results_train %>%
 
 Let's prep, fit, and evaluate the testing data. 
 
-```{r}
+```{r test_prep, echo=FALSE, warning=FALSE, message=FALSE}
 test_df<- 
-  read.csv("/Users/jeffshamp/Documents/Github/DT621_Fall2020_Group2/HW1/data/moneyball-evaluation-data.csv")
+  read.csv("./data/moneyball-evaluation-data.csv")
 test_df<- 
   test_df %>% 
   select(-c(TEAM_BATTING_HBP, INDEX)) %>%
@@ -294,36 +275,35 @@ test_df <- complete(mice(data = test_df,
                          method = "pmm",
                          seed = 9450,
                          print=FALSE), 3)
-
+  
 test_df<-
   test_df %>%
   mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
-         OBP = (TEAM_BATTING_H + TEAM_BATTING_BB)/AB,
          SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>%
   select(-c(AB, TEAM_BATTING_H))
-
-
 ```
 
 
-```{r}
+```{r make_predictions, echo=FALSE}
 test_pred<-
-lm_wf %>%
+  lm_wf %>%
   fit(train_df) %>%
-  predict(new_data = test_df) %>%
+  predict(new_data=test_df) %>%
   rename(predictions = .pred)
 
-summary(test_pred)
+knitr::kable(summary(test_pred))
 ```
 
-Wow. max of 1231, not good. How many terrible predictions are there? Let's filter by predictions beyond the currentl MLB season wins record of 116. 
 
-```{r}
+```{r prediction, echo=FALSE}
 test_pred %>%
-  filter(predictions >= 116) %>%
-  arrange(predictions)
+  filter(predictions >= 116 | predictions <=0) %>%
+  arrange(predictions) %>%
+  knitr::kable()
 ```
 
-Nine beyond the record, three of which are somewhat reasonable. The rest are not reasonable. 
+Three predictions are unreasonably large, but not bad given the metrics. Two predictions are above the MLB reccord, but only by two or three wins. With an RMSE of 9.53 and $R^{2}=0.446$, and $R^{2}_{ADJ} =0.43$ we have a model that explains 44% of the variance in the data and can predict wins within $\pm 10$ wins for a given season. That's pretty good at predicting wins relative to seasoned baseball veterans. 
+
+
 
 
