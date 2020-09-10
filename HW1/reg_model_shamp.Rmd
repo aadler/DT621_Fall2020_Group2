@@ -26,7 +26,7 @@ train_df<-
   read.csv("./data/moneyball-training-data.csv")
 train_df <-
   train_df %>%
-  select(-c(TEAM_BATTING_HBP, -INDEX)) %>%
+  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
   mutate_if(is.integer, as.numeric)
 ```
 
@@ -302,7 +302,7 @@ test_pred %>%
   knitr::kable()
 ```
 
-Three predictions are unreasonably large, but not bad given the metrics. Two predictions are above the MLB reccord, but only by two or three wins. With an RMSE of 9.53 and $R^{2}=0.446$, and $R^{2}_{ADJ} =0.43$ we have a model that explains 44% of the variance in the data and can predict wins within $\pm 10$ wins for a given season. That's pretty good at predicting wins relative to seasoned baseball veterans. 
+Three predictions are unreasonably large, but not bad given the metrics. One prediction is above the MLB reccord, but only by one win. With an RMSE of 9.53 and $R^{2}=0.443$, and $R^{2}_{ADJ} =0.43$ we have a model that explains 44% of the variance in the data and can predict wins within $\pm 10$ wins for a given season. That's pretty good at predicting wins relative to seasoned baseball veterans. 
 
 
 
