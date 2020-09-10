@@ -1,5 +1,5 @@
 ---
-title: "HW! - Regression Model - 621"
+title: "HW1 - Regression Model - 621"
 author: "Jeff Shamp"
 date: "9/8/2020"
 output: pdf_document
