@@ -1,0 +1,458 @@
+---
+title: 'DATA 621---Business Analytics and Data Mining'
+subtitle: 'Fall 2020---Group 2---Homework #1'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "9/27/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r loadData, include=FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(data.table)
+library(tidymodels)
+library(mice)
+library(psych)
+train_set <- read.csv('data/moneyball-training-data.csv')
+eval_set <- read.csv('data/moneyball-evaluation-data.csv')
+
+set.seed(9450)
+```
+
+
+## 1. DATA EXPLORATION
+
+### How often does the team win?
+
+We are given a data set of 2,276 records containing 15 seasonal statistics and the
+total number of wins a team had in a given year. On average, about 50% of games 
+played are won (81 games out of 162), with the best individual season having 146 wins and the worst 
+season having 0 wins. The data is normally distributed and most years have between 49 
+and 112 wins (blue lines below). The nature of the distribution means there aren't too 
+many extreme seasons where wins are significantly higher or lower than usual. This serves 
+as a good gut-check for our final predictions; if the predicted wins are too high or too 
+low, we know something in our model is probably off. 
+
+```{r wins, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2.5, fig.width = 5, fig.align = 'center'}
+
+avgWins <- mean(train_set$TARGET_WINS)
+sdev <- sd(train_set$TARGET_WINS)
+l1 <- mean(train_set$TARGET_WINS) - (2*sdev)
+l2 <- mean(train_set$TARGET_WINS) + (2*sdev)
+
+# histogram of wins
+p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
+  geom_histogram() + 
+  geom_vline(aes(xintercept= avgWins),
+            color="red", linetype="dashed", size=1)+
+  geom_vline(aes(xintercept=l1),
+            color="blue", linetype="dashed", size=1) +
+    geom_vline(aes(xintercept=l2),
+            color="blue", linetype="dashed", size=1) +
+  labs(title="Distribution of Wins",x="Number of wins", y = "Number of seasons")
+
+p
+```
+
+
+### What's missing? 
+A first look at the data shows that only about 8% of the records have a full set
+of information. The good news is that most of the missing values come from 
+statistics that don't happen too often: hit-by-pitch (92% missing!), caught 
+stealing (34% missing), and double plays (13% missing). Since we have so little 
+hit-by-pitch data, we expect that it doesn't contribute much to overall wins and will 
+eliminate it from a few of the models we propose. The other two stats have less 
+than half of the data missing, so we'll need to think of a clever way to fill in 
+these values. The remaining missing information is from a combination of stolen 
+bases and strikeouts (by batters and pitchers). **It seems completely unreasonable** 
+to have zero strike outs in a season, so this is something we'll most certainly have 
+to impute. 
+
+```{r pctNull, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2, fig.width = 5, fig.align = 'center'}
+
+pct_null <- data.frame(do.call("rbind", map(train_set %>% select(-INDEX), ~mean(is.na(.)))))
+colnames(pct_null) <- c('PCT_NULL')
+
+totalNulls <- pct_null %>%
+  mutate(VARIABLE = rownames(.)) %>%
+  arrange(desc(PCT_NULL)) %>%
+  filter(PCT_NULL > 0) %>%
+  select(VARIABLE, PCT_NULL)
+
+ggplot(totalNulls, aes(x=reorder(VARIABLE, PCT_NULL), y=PCT_NULL, label = round(PCT_NULL, 2))) + 
+  geom_text(vjust = 0.5, hjust = -0.05)+
+  geom_bar(stat = "identity") +
+  ggtitle("Variables with Missing Information") +
+  xlab("Statistic") + ylab("Percent Missing") + 
+  coord_flip() +
+  expand_limits(y = 1)
+
+```
+
+
+### Do the individual stats affect winning?
+
+**Stats with an expected negative impact: ** Intuitively, we expect that Caught 
+stealing, Errors, Hits allowed, Home Runs allowed, Strikeouts by batters, and Walks 
+allowed would all have a **negative** impact on the total wins. In other words, as 
+these values increase, we expect that the team is less likely to win.  
+
+  
+```{r negFactors, echo = FALSE, message = FALSE, warning = FALSE}
+
+negSet <- train_set %>%
+  select(TARGET_WINS, 
+         'Errors' = TEAM_FIELDING_E, 
+         'Hits allowed' = TEAM_PITCHING_H, 
+         'Strikeouts by batters' = TEAM_BATTING_SO, 
+         'Caught stealing' = TEAM_BASERUN_CS, 
+         'Walks allowed' = TEAM_PITCHING_BB, 
+         'Home Runs allowed' = TEAM_PITCHING_HR)
+
+ggplot(data = negSet %>%
+  gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+  facet_wrap(~ STAT, scales = "free")
+```
+  
+
+When we take a closer look at the data, these negative relationships aren't obvious. 
+In fact, only Errors and Hits allowed seem to have a negative impact on wins. Caught 
+stealing and Strikeouts by batters appear to be random; this means that whether the 
+stat for a particular season is high or low doesn't affect the overall number of wins. 
+  
+Even more interestingly, Home Runs allowed and Walks allowed have the *opposite* 
+effect; as these stats increase, so do the number of wins! 
+  
+  
+**Stats with an expected positive impact: ** We can look at the same information for the 
+stats that we expect to have a **positive** effect on wins: Base hits, Doubles, Triples, 
+Home Runs, Walks, Batters getting hit by pitches, Stolen bases, Double Plays, and Strikeouts 
+by pitchers.  
+  
+
+```{r posFactors, echo = FALSE, message = FALSE, warning = FALSE}
+
+posSet <- train_set %>%
+  select(TARGET_WINS, 
+         'Base hits' = TEAM_BATTING_H, 
+         'Doubles' = TEAM_BATTING_2B, 
+         'Triples' = TEAM_BATTING_3B, 
+         'Home Runs' = TEAM_BATTING_HR, 
+         'Walks' = TEAM_BATTING_BB, 
+         'Batters hit' = TEAM_BATTING_HBP,
+         'Stolen bases' = TEAM_BASERUN_SB,
+         'Double plays' = TEAM_FIELDING_DP,
+         'Strikeouts' = TEAM_PITCHING_SO)
+
+ggplot(data = posSet %>%
+  gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+  facet_wrap(~ STAT, scales = "free")
+
+```
+
+  
+Many of these stats *do* seem to have an effect on the number of wins, most notably,
+base hits and walks. We see weaker positive relationships for home runs, doubles, triples, 
+and stolen bases. This makes sense when we think about it; these things tend to happen 
+less often in games than pure base hits and walks, so they don't have as much of an 
+effect on winning. Finally, double plays and batters hit don't appear to have any 
+correlation with the number of wins. Once again, this intuitively makes sense because 
+they are less likely to happen in a game. 
+  
+One thing to note is the number of strikeouts compared to the number of wins. We can see
+that there are a few outliers (abnormally high numbers of strikeouts in a season). This
+should be taken with caution, as they don't represent a typical season's stats. 
+
+
+### Are some stats more skewed than others?
+
+Before using any of the statistics in a model, we need to take a closer look at the 
+variation in the data. We call out of the ordinary values (exceptionally high or
+low values) **outliers**. We need to take these into account in our modeling because
+we want to make sure our predictions aren't skewed because of them.
+
+
+```{r summaryInfo, include = FALSE}
+
+summary(train_set)
+```
+
+Some of the provided statistics are well-balanced in the sense that there are
+very few (or no) extreme values. **Home Runs by batters**, **Strikeouts by** 
+**batters**, and **Home Runs allowed** are examples of this. 
+
+```{r fewOutliers, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2.5, fig.width = 5, fig.align = 'center'}
+
+set1 <-  train_set %>%
+  select('Home Runs by batters' = TEAM_BATTING_HR, 
+         'Strikeouts by batters' = TEAM_BATTING_SO,  
+         'Home Runs allowed' = TEAM_PITCHING_HR) %>%
+  gather("stat", "value") %>%
+  filter(complete.cases(.) == TRUE)
+
+vals <- ggplot(set1 , aes(x=stat, y=value)) + 
+    geom_boxplot() +
+  labs(title="",x="", y = "Value") +
+  facet_wrap(~stat, scale="free")
+
+vals
+
+```
+Some things to note about each of these statistics:
+
+* **Home Runs allowed** (average = ~100/year) and **Home Runs by batters** (average = ~106/year) 
+have a very similar mid-range distribution (50% of the data lies between ~50 and 150). 
+The slight difference in average stats means that teams tend to have a higher number
+of Home Runs than the opposition team. 
+* The only thing that stands out about **Strikeouts by batters** (average = ~736/year) is 
+how nearly perfectly normal it is. 50% of the data is between about 500 and 1000 and 
+there are absolutely no outliers in the dataset! This means that there were no surprisingly
+high or low seasons.   
+  
+  
+Conversely, some of the stats have a very high number of outliers, indicating that there
+are some seasons with some abnormally high or low values. **Errors**, **Hits allowed**,
+**Stolen bases**, and **Walks by batters** are examples of this. 
+
+```{r manyOutliers, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2.5, fig.width = 6, fig.align = 'center'}
+
+set2 <-  train_set %>%
+  select('Walks by batters' = TEAM_BATTING_BB, 
+         'Stolen bases' = TEAM_BASERUN_SB,  
+         'Hits allowed' = TEAM_PITCHING_H,
+         'Errors' = TEAM_FIELDING_E) %>%
+  gather("stat", "value") %>%
+  filter(complete.cases(.) == TRUE)
+
+vals2 <- ggplot(set2 , aes(x=stat, y=value)) + 
+    geom_boxplot() +
+  labs(title="",x="", y = "Value") +
+  facet_wrap(~ stat, scale = 'free', ncol = 4)
+
+vals2
+
+#sapply(train_set %>% select(-INDEX, -TARGET_WINS), function(x){length(boxplot.stats(x)$out)})
+
+```
+Some things to note about each of these statistics: 
+
+* All of the outliers for **Errors** and **Hits allowed** are above the upper 
+tail of the data set. This is further illustrated by the mean and median values
+for both of these stats; in both instances, the mean per year (Errors = ~246/year
+and Hits allowed = ~1779/year) are higher than the median per year (Errors = 
+~159/year and Hits allowed = ~1518/year). This means that some seasons with
+exceptionally high values for both of these statistics skew the dataset. 
+* The maximum value
+  
+### Are stats correlated?
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+# Correlation matrix with significance levels (p-value)
+library("Hmisc")
+res2 <- rcorr(as.matrix(train_set %>% select(-INDEX)))
+
+# Insignificant correlation are crossed
+corrplot(res2$r, type="upper", order="hclust", 
+          tl.col = "black", p.mat = res2$P, sig.level = 0.01, insig = "blank")
+
+```
+
+## Data Preparation
+
+Now we have a good idea of the data we are looking at we can take the next steps to 
+prepare it for building a solid model.  We saw from the above that at least one 
+variable should be omitted for low reporting of data. There are also outlier concerns 
+for several of the variables, namely Team Pitching Strikeouts (`TEAM_PITCHING_SO`), 
+Team Batting Hits (`TEAM_BATTING_H`) and Team Pitching Hits ('TEAM_PITCHING_H'). 
+
+First, we will look into obvious outliers in the data set and remove them. There appears 
+to be enough data in the training set to take a naive yet cautious approach to outlier removal. 
+ 
+
+```{r load, echo=FALSE}
+train_set <-
+  train_set %>%
+  select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  mutate_if(is.integer, as.numeric)
+```
+
+
+### Isolate base hits. 
+
+The variable Team Batting Hits (`TEAM_BATTING_H`) is a combination of all hits for 
+the season. So we can cleanly use the Second base ('TEAM_BATTING_2B'), Third Base 
+('TEAM_BATTING_3B') and Home Run ('TEAM_BATTING_HR') variables we create a First base variable
+('TEAM_BATTING_1B') by subtracting the 2B, 3B, and HR respectively from the Team Batting Hits total. 
+
+~Do we need a graph here?
+
+```{r singles, echo=FALSE}
+train_set<- 
+    train_set %>%
+    mutate(TEAM_BATTING_1B =
+           TEAM_BATTING_H -
+           (TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR)) 
+  
+```
+
+
+### Outlier Removal
+
+When performing the processes of outlier removal a cautious approach is always best.  Each 
+outlier is evaluated to ensure its clearly from incorrectly or misentered data, the removal 
+does not affect our later assumptions, and the outlier creates a significant association or relation 
+at without it the relation is no longer present.   
+
+There are some clear issues with two of the variables.  Since both appear with a heavy right skew, we 
+will use median and IQR to remove the outliers.
+
+* TEAM_PITCHING_SO
+  +We discussed earlier Team Pitching Strikeouts.
+* TEAM_PITCHING_H 
+  + Team Pitching Hits has a value over 30,000 and two over 20,000
+  + These values seem highly unlikely and will be adjusted
+
+
+```{r outliers_1, echo=FALSE}
+train_set %>%
+  pivot_longer(everything(), 
+               names_to ="Variable", 
+               values_to="Value") %>%
+  ggplot(aes(x=Variable, y=Value)) +
+  geom_boxplot(na.rm = TRUE) + coord_flip()
+```
+  
+```{r iqr_removal_SO, echo=FALSE}
+train_set<-
+train_set %>%
+  na.omit() %>%
+  summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
+  bind_cols(
+            train_set 
+            )  %>%
+  filter(
+    TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO,
+                                probs=c(0.25), 
+                                na.rm = TRUE) - 1.5*iqr, 
+    TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, 
+                                probs=c(0.75), 
+                                na.rm=TRUE) + 1.5*iqr
+        ) %>%
+  select(-iqr)
+```
+  
+```{r iqr_removal_H, echo=FALSE}
+train_set<-
+train_set %>%
+  na.omit() %>%
+  summarise(iqr = IQR(TEAM_PITCHING_H)) %>%
+  bind_cols(
+            train_set 
+            )  %>%
+  filter(
+    TEAM_PITCHING_H > quantile(TEAM_PITCHING_H,
+                                probs=c(0.25), 
+                                na.rm = TRUE) - 1.5*iqr, 
+    TEAM_PITCHING_H < quantile(TEAM_PITCHING_H, 
+                                probs=c(0.75), 
+                                na.rm=TRUE) + 1.5*iqr
+        ) %>%
+  select(-iqr)
+
+```
+  
+```{r outlier_boxplot, echo=FALSE}
+train_set %>%
+  pivot_longer(everything(), 
+               names_to ="Variable", 
+               values_to="Value") %>%
+  ggplot(aes(x=Variable, y=Value)) +
+  geom_boxplot(na.rm = TRUE) + coord_flip()
+```
+  
+This has eliminated what appears to be the most extreme outliers. There are 
+still large outlier sets for Errors and stolen bases, but none that seem to 
+dwarf the other variables. According to the box plot, things appear to be on a 
+scale that seems logical given the data and source of information that we have. 
+
+## "MICE" imputation method and Feature Engineering
+
+From our early exploration of the data, the vast majority of the data is complete 
+with only a few variables with missing values. We will use the "mice" imputation method, 
+specifically predictive mean matching method.
+
+MICE (Multivariate imputation by chained equations) is a principled method of dealing 
+with missing data.  It creates multiple imputations, as opposed to single imputations 
+and accounts for the statistical uncertainty in the imputations.  It creates predictive 
+values for the mean instead of imputing the IQR values.  
+
+[described here](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3074241/#:~:text=Missing%20data%20are%20a%20common,method%20of%20addressing%20missing%20data.).  
+```{r impute_train,echo=FALSE, message=FALSE, warning=FALSE}
+train_set <- complete(mice(data = train_set, 
+                         method = "pmm", 
+                         seed = 9450, 
+                         print=FALSE), 3)
+```
+
+With outliers removed and missing values imputed via MICE, we can build a feature, 
+specifically one for slugging. 
+
+### Slugging Percentage
+
+~Why are we building a feature?
+
+Slugging is calculated in the following way
+
+${\displaystyle \mathrm {SLG} ={\frac {({\mathit {1B}})+(2\times {\mathit {2B}})+(3\times {\mathit {3B}})+(4\times {\mathit {HR}})}{AB}}}$
+
+We will take the same approximation for at-bats. 
+
+${\displaystyle \mathrm {\sim SLG} ={\frac {({\mathit {1B}})+(2\times {\mathit {2B}})+(3\times {\mathit {3B}})+(4\times {\mathit {HR}})}{SO_{batting} + H + BB}}}$
+
+
+```{r make_slg_obp, echo=FALSE}
+train_set<-
+train_set %>%
+  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
+         SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>%
+  # Removing AB and total hits
+  select(-c(AB, TEAM_BATTING_H))
+```
+
+
+## Modeling
+
+We will start with a simple linear model and select out features based on null hypothesis \
+testing for non-zero slope. 
+
+Below is the output of coefficients for backward selection model. 
+
+```{r lm_first, echo=FALSE, eval=FALSE}
+lm_reg = lm(data=train_set, TARGET_WINS ~ .)
+summary(lm_reg)
+```
+
+
+```{r lm_selected, echo=FALSE}
+lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
+          TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
+          TEAM_PITCHING_HR+ TEAM_PITCHING_H+
+          TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_set)
+knitr::kable(lm_1$coefficients, digits = 3L)
+```
+
+
