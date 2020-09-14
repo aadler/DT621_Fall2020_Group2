@@ -21,8 +21,8 @@ library(data.table)
 library(tidymodels)
 library(mice)
 library(psych)
-train_set <- read.csv('data/moneyball-training-data.csv')
-eval_set <- read.csv('data/moneyball-evaluation-data.csv')
+train_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv')
+eval_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv')
 
 set.seed(9450)
 ```
