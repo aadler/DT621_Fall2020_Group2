@@ -9,6 +9,7 @@ output:
   html_document: default
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -25,10 +26,8 @@ library(Hmisc)
 library(MASS)
 library(dplyr)
 library(caret)
-
 train_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv')
 eval_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv')
-
 set.seed(9450)
 ```
 
@@ -47,12 +46,10 @@ as a good gut-check for our final predictions; if the predicted wins are too hig
 low, we know something in our model is probably off. 
 
 ```{r wins, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2.5, fig.width = 5, fig.align = 'center'}
-
 avgWins <- mean(train_set$TARGET_WINS)
 sdev <- sd(train_set$TARGET_WINS)
 l1 <- mean(train_set$TARGET_WINS) - (2*sdev)
 l2 <- mean(train_set$TARGET_WINS) + (2*sdev)
-
 # histogram of wins
 p <- ggplot(train_set, aes(x=TARGET_WINS)) + 
   geom_histogram() + 
@@ -63,7 +60,6 @@ p <- ggplot(train_set, aes(x=TARGET_WINS)) +
     geom_vline(aes(xintercept=l2),
             color="blue", linetype="dashed", size=1) +
   labs(title="Distribution of Wins",x="Number of wins", y = "Number of seasons")
-
 p
 ```
 
@@ -82,16 +78,13 @@ combination of stolen bases and strikeouts by pitchers and batters (`TEAM_BASERU
 strike outs in a season, so this is something we'll most certainly have to impute. 
 
 ```{r pctNull, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2, fig.width = 5, fig.align = 'center'}
-
 pct_null <- data.frame(do.call("rbind", map(train_set %>% dplyr::select(-INDEX), ~mean(is.na(.)))))
 colnames(pct_null) <- c('PCT_NULL')
-
 totalNulls <- pct_null %>%
   mutate(VARIABLE = rownames(.)) %>%
   arrange(desc(PCT_NULL)) %>%
   filter(PCT_NULL > 0) %>%
   dplyr::select(VARIABLE, PCT_NULL)
-
 ggplot(totalNulls, aes(x=reorder(VARIABLE, PCT_NULL), y=PCT_NULL, label = round(PCT_NULL, 2))) + 
   geom_text(vjust = 0.5, hjust = -0.05)+
   geom_bar(stat = "identity") +
@@ -99,7 +92,6 @@ ggplot(totalNulls, aes(x=reorder(VARIABLE, PCT_NULL), y=PCT_NULL, label = round(
   xlab("Statistic") + ylab("Percent Missing") + 
   coord_flip() +
   expand_limits(y = 1)
-
 ```
 
 
@@ -112,7 +104,6 @@ we expect that the team is less likely to win.
 
   
 ```{r negFactors, echo = FALSE, message = FALSE, warning = FALSE}
-
 negSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Errors' = TEAM_FIELDING_E, 
@@ -121,7 +112,6 @@ negSet <- train_set %>%
          'Caught stealing' = TEAM_BASERUN_CS, 
          'Walks allowed' = TEAM_PITCHING_BB, 
          'Home Runs allowed' = TEAM_PITCHING_HR)
-
 ggplot(data = negSet %>%
   gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
   geom_point() +
@@ -147,7 +137,6 @@ pitchers.
   
 
 ```{r posFactors, echo = FALSE, message = FALSE, warning = FALSE}
-
 posSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Base hits' = TEAM_BATTING_H, 
@@ -159,14 +148,12 @@ posSet <- train_set %>%
          'Stolen bases' = TEAM_BASERUN_SB,
          'Double plays' = TEAM_FIELDING_DP,
          'Strikeouts' = TEAM_PITCHING_SO)
-
 ggplot(data = posSet %>%
   gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
   geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
-  labs(title="Number of wins with respect to recorded stats",x="", y = "Number of Wins") +
+  labs(title="Number of Wins with Respect to Recorded Stats",x="", y = "Number of Wins") +
   facet_wrap(~ STAT, scales = "free")
-
 ```
 
   
@@ -192,24 +179,18 @@ aren't skewed because of them.
 
 
 ```{r summaryInfo, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3, fig.width = 5, fig.align = 'center'}
-
 #summary(train_set)
-
 totalOutliers <- data.frame(sapply(train_set %>% dplyr::select(-INDEX, -TARGET_WINS, - TEAM_BATTING_HBP), 
        function(x){length(boxplot.stats(x)$out)/nrow(train_set)}))
-
 totalOutliers$VARIABLE_NM <- rownames(totalOutliers)
 colnames(totalOutliers) <- c('PCT_OUTLIERS', 'VARIABLE_NM')
-
 ggplot(totalOutliers , aes(x=reorder(VARIABLE_NM, PCT_OUTLIERS), y=PCT_OUTLIERS, label = round(PCT_OUTLIERS, 3))) + 
   geom_text(vjust = 0.5, hjust = -0.05)+
   geom_bar(stat = "identity") +
-  ggtitle("Percent Outliers") +
+  ggtitle("Percentage of Outliers") +
   xlab("Statistic") + ylab("Percent of Data that is an Outlier") + 
   coord_flip() +
   expand_limits(y = 0.15)
-
-
 ```
 
 As we can see, some of the provided statistics are well-balanced in the sense that there are very 
@@ -217,21 +198,17 @@ As we can see, some of the provided statistics are well-balanced in the sense th
 (`TEAM_BATTING_SO`), and **Home Runs by batters** (`TEAM_BATTING_HR`) are examples of this. 
 
 ```{r fewOutliers, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2, fig.width = 6, fig.align = 'center'}
-
 set1 <-  train_set %>%
   dplyr::select('Home Runs by batters' = TEAM_BATTING_HR, 
          'Strikeouts by batters' = TEAM_BATTING_SO,  
          'Home Runs allowed' = TEAM_PITCHING_HR) %>%
   gather("stat", "value") %>%
   filter(complete.cases(.) == TRUE)
-
 vals <- ggplot(set1 , aes(x=stat, y=value)) + 
     geom_boxplot() +
   labs(title="",x="", y = "Value") +
   facet_wrap(~stat, scale="free")
-
 vals
-
 ```
 Some things to note about each of these statistics:
 
@@ -251,7 +228,6 @@ are some seasons with some abnormally high or low values. **Errors** (`TEAM_FIEL
 **Stolen bases** (`TEAM_BASERUN_SB`) are examples of this. 
 
 ```{r manyOutliers, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2, fig.width = 6, fig.align = 'center'}
-
 set2 <-  train_set %>%
   dplyr::select('Walks by batters' = TEAM_BATTING_BB, 
          'Stolen bases' = TEAM_BASERUN_SB,  
@@ -259,14 +235,11 @@ set2 <-  train_set %>%
          'Errors' = TEAM_FIELDING_E) %>%
   gather("stat", "value") %>%
   filter(complete.cases(.) == TRUE)
-
 vals2 <- ggplot(set2 , aes(x=stat, y=value)) + 
     geom_boxplot() +
   labs(title="",x="", y = "Value") +
   facet_wrap(~ stat, scale = 'free', ncol = 4)
-
 vals2
-
 ```
 Some things to note about each of these statistics: 
 
@@ -287,7 +260,6 @@ The remaining stats, **Walks allowed** (`TEAM_PITCHING_BB`), **Base Hits by batt
 (`TEAM_BATTING_2B`) have between 29 and 99 outliers. 
 
 ```{r otherOutliers, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3.5, fig.width = 7, fig.align = 'center'}
-
 set3 <-  train_set %>%
   dplyr::select('Base Hits by batters' = TEAM_BATTING_H, 
          'Doubles by batters' = TEAM_BATTING_2B,  
@@ -298,14 +270,11 @@ set3 <-  train_set %>%
          'Double plays' = TEAM_FIELDING_DP) %>%
   gather("stat", "value") %>%
   filter(complete.cases(.) == TRUE)
-
 vals3 <- ggplot(set3 , aes(x=stat, y=value)) + 
     geom_boxplot() +
   labs(title="",x="", y = "Value") +
   facet_wrap(~ stat, scale = 'free', ncol = 4)
-
 vals3
-
 ```
 
 Some things to note: 
@@ -329,14 +298,11 @@ so does the other) and red dots represent negatively correlated variables (as on
 the other decreases).
 
 ```{r corrPlot, echo = FALSE, message = FALSE, warning = FALSE}
-
 # Correlation matrix with significance levels (p-value)
 res2 <- rcorr(as.matrix(train_set %>% dplyr::select(-INDEX)))
-
 # Insignificant correlation are crossed
 corrplot(res2$r, type="upper", order="hclust", 
           tl.col = "black", p.mat = res2$P, sig.level = 0.01, insig = "blank")
-
 ```
 
 Some noteworthy relationships (coincidental or not):
@@ -432,7 +398,6 @@ train_set<- train_set %>%
                                 na.rm=TRUE) + 1.5*iqr
         ) %>%
   dplyr::select(-iqr)
-
 ```
 
 We can take a look at the distributions of these variables after outlier removal: 
@@ -484,14 +449,12 @@ of *all* hits for the season, so we can create Single Base Hits as follows:
 $$Singles = Total\ Hits - (Doubles + Triples + Homeruns)$$
 
 ```{r singles, include=FALSE}
-
 train_set<- train_set %>%
   dplyr::select(-INDEX) %>%
   mutate_if(is.integer, as.numeric) %>%
   mutate(TEAM_BATTING_1B =
            TEAM_BATTING_H -
            (TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR))
-
 ```
 
 
@@ -522,10 +485,8 @@ and Homeruns (`TEAM_BATTING_HR`). All of these variables should have a positive 
 with the total number of wins. 
 
 ```{r slugging_compare, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 2.5, fig.width = 8, fig.align = 'center'}
-
 modified_set <- train_set %>%
   dplyr::select(TARGET_WINS, SLG, TEAM_BATTING_3B, TEAM_BATTING_HR)
-
 ggplot(data = modified_set %>%
   gather(-TARGET_WINS, key = "STAT", value = "VALUE"), aes(x = VALUE, y = TARGET_WINS)) + 
   geom_point() +
@@ -558,12 +519,12 @@ lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
           TEAM_PITCHING_HR+ TEAM_PITCHING_H+
           TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_set)
-knitr::kable(lm_1$coefficients, digits = 3L)
+knitr::kable(summary(lm_1)$coefficients, digits = 3L, caption = 'Backwards Model Regression Output')
 ```
 
 First, we are keeping the coefficient for `TEAM_BATTING_HR` since it's p-value is marginally above the general threshold and knowledge of the game suggests it is important. There are some counter intuitive results, which is expected given that baseball is a messy, imprecise game that has evolved over time. To that end, we should expect some seemingly strange results from algorithmic regression. We used a combination of domain knowledge and data analysis to justify retaining features. 
 
-Fielding double plays and batting doubles both appear to have negative impacts on wins even though they _should_ be postive impacts. Turning double plays, while a good for the defensive team, may suggest a larger, negative issue. Namely, weak pitching that leads to runners on base. Similarly, batting doubles, leaves runners open to double plays. Allowed hits by pitching, caught stealing, and batting strike-outs are all counter intuitive results as well, but they seem to be small contributors and these are events that happen regularly in every game. 
+Fielding double plays and batting doubles both appear to have negative impacts on wins even though they _should_ be positive impacts. Turning double plays, while a good for the defensive team, may suggest a larger, negative issue. Namely, weak pitching that leads to runners on base. Similarly, batting doubles, leaves runners open to double plays. Allowed hits by pitching, caught stealing, and batting strike-outs are all counter intuitive results as well, but they seem to be small contributors and these are events that happen regularly in every game. 
 
 Slugging as an approximation is the major predictor in this regression, by far. The other predictors other than the intercept are orders of magnitude less in predictive value. It should be noted that slugging alone is not a good predictor for wins overall. 
 
@@ -577,31 +538,27 @@ train_df2<- train_set[-influential, ]
 ```
 
 
-
 ### Model 2
 This is a model allowing pairwise interactions within the data types of baserunning,
 batting, pitching, and fielding, fit using a forward and backwards stepwise regression.
 
 ```{r model2, include = FALSE}
-
 crazyModel <- lm(TARGET_WINS ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
   (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
   TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, data = train_set)
-
 stepModel <- stepAIC(crazyModel, scope = list(upper = ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
   (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
   TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, lower = ~ 1),
   direction = 'both')
-
 sstm <- summary(stepModel)
-stmr2 <- prettyNum(sstm$r.squared, digits = 3L)
-stmar2 <- prettyNum(sstm$adj.r.squared, digits = 3L)
+stmr2 <- sstm$r.squared
+stmar2 <- sstm$adj.r.squared
 stmAIC <- prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')
-stmRMSE <- prettyNum(sqrt(mean(stepModel$residuals ^ 2)), digits = 5L)
+stmRMSE <- sqrt(mean(stepModel$residuals ^ 2))
 stmF <- prettyNum(sstm$fstatistic, digits = 5L)
 stmFp <- pf(sstm$fstatistic[[1]], sstm$fstatistic[[2]], sstm$fstatistic[[3]],
             lower.tail = FALSE)
@@ -612,7 +569,6 @@ stmFp <- pf(sstm$fstatistic[[1]], sstm$fstatistic[[2]], sstm$fstatistic[[3]],
 ```{r model2_discuss, echo = FALSE, message = FALSE, warning = FALSE,}
 knitr::kable(sstm$coefficients, digits = 3L,
              caption = 'Step Model with Pairwise Class Interactions Output')
-
 ```
 
 
@@ -680,38 +636,75 @@ somewhat better at "small ball" and moving the runners along.
 
 
 ### Model 3
-The final model is a Stepwise Regression with Repeated k-fold Cross-Validation.
+The final model is a Stepwise Regression with Repeated k-fold Cross-Validation, and higher order polynomials variables were introduced into the full model.
   
-A stepwise variable selection model is conducted to determine what are the variables that can help predict the number of wins for the team. The stepwise variable selection allows variables to be added one at a time to the model, as long as the F-statistic is below the specified $\alpha$, in this case $\alpha = 0.05$. However, variables already in the model do not necessarily stay in. The steps evaluate all of the variables already included in the model and remove any variable that has an insignificant F-statistic. Only after this test ends, is the best model found, that is when none of the variables can be excluded and every variable included in the model is significant. 
+A stepwise variable selection model is conducted to determine what are the variables that can help predict the number of wins for the team. The method allows variables to be added one at a time to the model, as long as the F-statistic is below the specified $\alpha$, in this case $\alpha = 0.05$. However, variables already in the model do not necessarily stay in. The steps evaluate all of the variables already included in the model and remove any variable that has an insignificant F-statistic. Only after this test ends, is the best model found, that is when none of the variables can be excluded and every variable included in the model is significant. 
 
-Here the dependent variable is the continuous variable, `TARGET_WINS`, and the independent variables are the full model to identify the most contributing predictors. In addition, a robust method for estimating the accuracy of a model, the k-fold cross-validation method, was performed evaluate the model performance on different subset of the training data and then calculate the average prediction error rate.
+Here, the dependent variable is the continuous variable, `TARGET_WINS`, and the independent variables are the full model to identify the most contributing predictors. In addition, a robust method for estimating the accuracy of a model, the k-fold cross-validation method, was performed evaluate the model performance on different subset of the training data and then calculate the average prediction error rate.
 
 ```{r model3, include = FALSE}
-
 # Data Transformation & Multicollinearity Diagnostic Measures
 train_df.clean = subset(train_set, select = -c(TEAM_PITCHING_HR, TEAM_BATTING_H, TEAM_BATTING_HBP))
-
 stepdata = cbind(train_df.clean,sapply(train_df.clean[2:length(train_df.clean)], 
                                        function(x) x^2))
 names(stepdata) = make.unique(names(stepdata), sep = "_")
 train.control = trainControl(method = "cv", number = 10)
-
 # Train the model
 step.model = train(TARGET_WINS ~ ., data = stepdata, method = "lmStepAIC", 
                    trControl = train.control, trace = FALSE)
-
 # Final model coefficients
 step.model$finalModel 
-
+# Summary of the model
+mod_sum = summary(step.model$finalModel)
 ```
 
 **Coefficient Discussion: **
 ```{r model3_discuss, echo=FALSE}
-step.model$finalModel[["coefficients"]] %>% knitr::kable()
+mod_sum[["coefficients"]] %>% knitr::kable(digits = 3L, caption = 'K-fold Step Model with Higher Order Polynomials Output')
 ```
 
 Studying the coefficients of the model suggest that winning is in favor if the team batting hits more doubles, triples and home runs. Moreover, increase in the number of stolen bases, and a decrease in caught steals, double plays, error, and walks allowed would all lead to a win for the batting team. It is noteworthy that the model suggests that a decrease in single hits by batter and an increase in strikeouts by batters which seems counter intuitive. But these variables were kept because when a batter steps to the plate, the player is more likely to strike out than to get a hit. Trying to hit the ball out of the park will come with strikeouts but it will also increase the chances of hitting home runs (even 1B, 2B, 3B), and that is pretty good exchange that most teams are willing carry out.
 
+## SELECTING A MODEL
+
+In order to select the best model to make predictions, we looked at some measurements that tells us how well each model fits. These include the 1) $R^2$, which represents the proportion of the variance explained by a model; 2) $adj R^2$, which is a modified version of $R^2$; 3) *Root Mean Squared Error* (RMSE), which is the square root of the mean squared error; and 4) *Akaike Information Criterion* (AIC), which is an estimator of out-of-sample prediction error. 
+
+It is apparent that Model #2: Pairwise accounts for nearly 43% of the variation in the dependent variable with the independent variables, which is acceptable as a good model ($R^2 = 0.427$, $adjR^2 = 0.417$. Because the RMSE and adjusted $R^2$ statistics already include a minor adjustment for the number of coefficients estimated, to evaluate the model complexity, we compared the AIC. While a smaller AIC is deemed less complex, the difference between Model #2 and Model #3 is quite insignificant. 
+
+```{r echo=FALSE}
+# Predictions on training data
+mod_sum1 = summary(lm_1)  
+pred_lm1 = predict(lm_1, newdata = train_set)
+pred_step.model = predict(step.model, newdata = stepdata)
+
+# Model accuracy
+results = data.frame(Models = c("Model #1: Backwards" , "Model #2: Pairwise", "Model #3: K-fold"),
+                R.squared = c(mod_sum1[["r.squared"]], stmr2, mod_sum[["r.squared"]]), 
+                adj.R.squared = c(mod_sum[["adj.r.squared"]], stmar2, mod_sum[["adj.r.squared"]]),
+                AIC = c(AIC(lm_1), AIC(stepModel), AIC(step.model$finalModel)),
+                RSME = c(sqrt(mean((train_set$TARGET_WINS - pred_lm1)^2)), stmRMSE,
+                         sqrt(mean((stepdata$TARGET_WINS - pred_step.model)^2))))
+results %>% knitr::kable(digits = 3L, caption = 'Performance Statistics & Error Measure of Models' )
+```
 
 
-## SELECT MODELS
+## PREDICTIONS
+
+Using the test data and the selected final model, a comparison in the prediction statistic was conducted. 
+
+
+```{r include=FALSE, eval=FALSE}
+# Data Transformation to match train data
+eval_set = complete(mice(data = eval_set, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
+
+# Add final model
+predictions = predict(ADD-MODEL-HERE, newdata = eval_set)
+
+results = cbind(dataset = c('Training Data', 'Test Prediction'), 
+                bind_rows(describe(train_set$TARGET_WINS), describe(predictions))) 
+rownames(results) = NULL
+
+results[,-c(2,8,11)] %>% knitr::kable(digits = 3L, caption = 'Prediction Comparison with Final Model')
+```
+
+## CONCLUSIONS
