@@ -1,0 +1,83 @@
+---
+title: "Blog Post 1: Orthogonal Regression"
+subtitle: "DT 621---Fall 2020"
+author: "Avraham Adler"
+date: "9/15/2020"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# What is Orthogonal Regression
+Orthogonal regression is when the error between the observations, \(y_i\) and
+the regression line is not measured solely along the y-axis (vertically) but 
+perpendicularly---orthogonally---to the regreression line. The "error" is split
+evenly between the x-axis and the y-axis. This is a special case of
+[Deming regression](https://en.wikipedia.org/wiki/Deming_regression), where the
+relationship between the x and y error is a constant reflecting the ratio of the
+variance of their errors, not necessarily equal to one as it is in orthogonal
+regression.
+
+# Why Use Orthogonal Regression?
+Orthogonal and Deming regressions are special cases of
+[errors-in-variables models](https://en.wikipedia.org/wiki/Errors-in-variables_models).
+These are models where there is explicit recognition that the *independant*
+variables are subject to error as well. Perhaps a tool was faulty, perhaps we
+ran into Heisenberg's uncertainty principle and we **cannot** measure precisely.
+Regardless, these kinds of models help correct for the attenuation bias that
+results when independent variables have measurement error.
+
+# Example
+Let's assume that the true relationship between \(X\) and \(Y\) is:
+\[
+y_i = 3.1 + 6x_i + \epsilon_i\\
+\epsilon \sim \mathcal{N}(0, 2)
+\]
+
+In case one, we will generate data assuming we know the \(x\)'s exactly. In case
+two, we will generate white noise to add to each \(x\), representing the
+measurement error. We will then compare the results of OLS with orthogonal least
+squares.
+
+```{r createData, fig.width=8}
+set.seed(33)
+n <- 15
+x <- rnorm(n, 0, 1)
+y <- 3.1 + 6 * x + rnorm(n, 0, 2)
+x2 <- x + rnorm(n, 0, 2)
+par(mfrow = c(1, 2))
+plot(x2, y, col = 'red', xlim = c(min(x, x2), max(x, x2)),
+                                  ylim = c(min(y), max(y)),
+     main = "Observations With Measurment Error")
+plot(x, y, xlim = c(min(x, x2), max(x, x2)), ylim = c(min(y), max(y)),
+     main = "Observations w/o Measurment Error")
+```
+
+Clearly, the measurement error will inducing attenuation error in the model. We
+will now regress the observed \(y\)'s on the **observed** \(x\)'s.
+
+```{r model, fig.width=8}
+set.seed(33)
+library(deming)
+fit1 <- lm(y ~ x2)
+fit2 <- deming(y ~ x2)
+Tfit <- lm(y ~ x)
+summary(fit1)
+fit2
+plot(x2, y, col = 'red', xlim = c(min(x, x2), max(x, x2)),
+                                  ylim = c(min(y), max(y)),
+     main = "Observations With Measurment Error")
+abline(fit1$coefficients[[1]], fit1$coefficients[[2]], col = 'red', lty = 2)
+abline(fit2$coefficients[[1]], fit2$coefficients[[2]], col = 'darkgreen', lty = 2)
+abline(Tfit$coefficients[[1]], Tfit$coefficients[[2]], col = 'black', lty = 2)
+```
+
+The red line is the linear regression assuming the measured \(x\)'s have no
+error. The black line is the regression through the "true" value of the \(x\)'s.
+The green line is the orthogonal regression line. While we were unable to fully
+recover the true regression line, using orthogonal regression did address the
+attenuation error, and shifted the slope more towards the actual than to 0.
