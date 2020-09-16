@@ -511,31 +511,32 @@ Model 1 includes all variables except Singles, Triples, Base Hits, Strikeouts by
 pitchers, Walks allowed, and Batters Hit by Pitch. The final variables were chosen as 
 a result of backwards dplyr::selection based on null hypothesis testing for non-zero slope.  
   
-We can take a look at the final coefficients for each variable. 
+**Further data transformation: **  
+We will use Cook's distance to remove outliers that are influencing the fit of the model above. We will use a cutoff of $\frac{4}{N}$. 
 
-**Coefficient Discussion: **
-```{r model1, echo=FALSE}
+```{r cooks_distance, include=TRUE}
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
           TEAM_PITCHING_HR+ TEAM_PITCHING_H+
           TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_set)
+
+cooks_dis<- cooks.distance(lm_1)
+influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_set)))])
+train_df2<- train_set[-influential, ]
+
+lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
+          TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
+          TEAM_PITCHING_HR+ TEAM_PITCHING_H+
+          TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_df2)
 knitr::kable(summary(lm_1)$coefficients, digits = 3L, caption = 'Backwards Model Regression Output')
 ```
 
+**Coefficient Discussion: **
 First, we are keeping the coefficient for `TEAM_BATTING_HR` since it's p-value is marginally above the general threshold and knowledge of the game suggests it is important. There are some counter intuitive results, which is expected given that baseball is a messy, imprecise game that has evolved over time. To that end, we should expect some seemingly strange results from algorithmic regression. We used a combination of domain knowledge and data analysis to justify retaining features. 
 
 Fielding double plays and batting doubles both appear to have negative impacts on wins even though they _should_ be positive impacts. Turning double plays, while a good for the defensive team, may suggest a larger, negative issue. Namely, weak pitching that leads to runners on base. Similarly, batting doubles, leaves runners open to double plays. Allowed hits by pitching, caught stealing, and batting strike-outs are all counter intuitive results as well, but they seem to be small contributors and these are events that happen regularly in every game. 
 
 Slugging as an approximation is the major predictor in this regression, by far. The other predictors other than the intercept are orders of magnitude less in predictive value. It should be noted that slugging alone is not a good predictor for wins overall. 
-
-**Further data transformation: **  
-We will use Cook's distance to remove outliers that are influencing the fit of the model above. We will use a cutoff of $\frac{4}{N}$. 
-
-```{r cooks_distance, include=FALSE}
-cooks_dis<- cooks.distance(lm_1)
-influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_set)))])
-train_df2<- train_set[-influential, ]
-```
 
 
 ### Model 2
