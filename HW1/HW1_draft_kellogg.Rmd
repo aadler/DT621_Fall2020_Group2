@@ -514,7 +514,7 @@ a result of backwards dplyr::selection based on null hypothesis testing for non-
 **Further data transformation: **  
 We will use Cook's distance to remove outliers that are influencing the fit of the model above. We will use a cutoff of $\frac{4}{N}$. 
 
-```{r cooks_distance, include=TRUE}
+```{r cooks_distance, include=FALSE}
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
           TEAM_PITCHING_HR+ TEAM_PITCHING_H+
