@@ -519,15 +519,16 @@ lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
           TEAM_PITCHING_HR+ TEAM_PITCHING_H+
           TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_set)
-
 cooks_dis<- cooks.distance(lm_1)
 influential<- as.numeric(names(cooks_dis)[(cooks_dis > (4/nrow(train_set)))])
 train_df2<- train_set[-influential, ]
-
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B +TEAM_BATTING_HR+
           TEAM_BATTING_BB+TEAM_BATTING_SO+ TEAM_BASERUN_SB+TEAM_BASERUN_CS+
           TEAM_PITCHING_HR+ TEAM_PITCHING_H+
           TEAM_FIELDING_E+ TEAM_FIELDING_DP+  SLG, data=train_df2)
+
+mod_sum1 = summary(lm_1)  
+pred_lm1 = predict(lm_1, newdata = train_df2)
 knitr::kable(summary(lm_1)$coefficients, digits = 3L, caption = 'Backwards Model Regression Output')
 ```
 
@@ -644,11 +645,25 @@ A stepwise variable selection model is conducted to determine what are the varia
 Here, the dependent variable is the continuous variable, `TARGET_WINS`, and the independent variables are the full model to identify the most contributing predictors. In addition, a robust method for estimating the accuracy of a model, the k-fold cross-validation method, was performed evaluate the model performance on different subset of the training data and then calculate the average prediction error rate.
 
 ```{r model3, include = FALSE}
+train_df = read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv')
+train_df = subset(train_df, select = -c(INDEX, TEAM_BATTING_HBP))
+model = lm(TARGET_WINS ~ ., data = train_df)
+# Remove Outlier and more cleaning
+cooksd = cooks.distance(model)
+influential = as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm = TRUE))])
+train_df = train_df[-c(influential), ]
+train_df.clean = complete(mice(data = train_df, method = "pmm", maxit = 5, 
+                               seed = 525, print = FALSE), 3)
+train_df.clean$TEAM_BATTING_1B = train_df.clean$TEAM_BATTING_H - 
+  (train_df.clean$TEAM_BATTING_2B + train_df.clean$TEAM_BATTING_3B + 
+     train_df.clean$TEAM_BATTING_HR)
+train_df.clean = subset(train_df.clean, select = -c(TEAM_BATTING_H, TEAM_PITCHING_HR))
 # Data Transformation & Multicollinearity Diagnostic Measures
-train_df.clean = subset(train_set, select = -c(TEAM_PITCHING_HR, TEAM_BATTING_H, TEAM_BATTING_HBP))
 stepdata = cbind(train_df.clean,sapply(train_df.clean[2:length(train_df.clean)], 
                                        function(x) x^2))
 names(stepdata) = make.unique(names(stepdata), sep = "_")
+# Set up repeated k-fold cross-validation
+set.seed(525)
 train.control = trainControl(method = "cv", number = 10)
 # Train the model
 step.model = train(TARGET_WINS ~ ., data = stepdata, method = "lmStepAIC", 
@@ -657,6 +672,8 @@ step.model = train(TARGET_WINS ~ ., data = stepdata, method = "lmStepAIC",
 step.model$finalModel 
 # Summary of the model
 mod_sum = summary(step.model$finalModel)
+# Predictions on train data
+pred_step.model = predict(step.model, newdata = stepdata)
 ```
 
 **Coefficient Discussion: **
@@ -668,16 +685,11 @@ Studying the coefficients of the model suggest that winning is in favor if the t
 
 ## SELECTING A MODEL
 
-In order to select the best model to make predictions, we looked at some measurements that tells us how well each model fits. These include the 1) $R^2$, which represents the proportion of the variance explained by a model; 2) $adj R^2$, which is a modified version of $R^2$; 3) *Root Mean Squared Error* (RMSE), which is the square root of the mean squared error; and 4) *Akaike Information Criterion* (AIC), which is an estimator of out-of-sample prediction error. 
+In order to select the best model to make predictions, we looked at some measurements that tells us how well each model fits the training. These include the 1) $R^2$, which represents the proportion of the variance explained by a model; 2) $adj R^2$, which is a modified version of $R^2$; 3) *Root Mean Squared Error* (RMSE), which is the square root of the mean squared error; and 4) *Akaike Information Criterion* (AIC), which is an estimator of out-of-sample prediction error. 
 
-It is apparent that Model #2: Pairwise accounts for nearly 43% of the variation in the dependent variable with the independent variables, which is acceptable as a good model ($R^2 = 0.427$, $adjR^2 = 0.417$. Because the RMSE and adjusted $R^2$ statistics already include a minor adjustment for the number of coefficients estimated, to evaluate the model complexity, we compared the AIC. While a smaller AIC is deemed less complex, the difference between Model #2 and Model #3 is quite insignificant. 
+When comparing the three models, it was interesting to select which would be our best model given that their performance statistics and error measurements were not significantly different from each other. It is apparent that Model #1: Backwards accounts for nearly 44% of the variation in the dependent variable with the independent variables, which is acceptable as a good model. But it's explanatory power based on an $adj R^2 = 0.414$ suggests it is no different from Model #3: K-fold. In addition, Model #1: Backwards has a highest RSME of all the models, which ranks as one of the major criteria we are using to decide on a model. Now, Model #2: Pairwise resulted in the $R^2 = 0.427$, $adjR^2 = 0.417$, and the lowest $RSME = 10.193$. Because the RMSE and adjusted $R^2$ statistics already include a minor adjustment for the number of coefficients estimated, to evaluate the model complexity, we compared the AIC. While a smaller AIC is deemed less complex, Model #1: Backwards would have been the way to go, however, it was deemed that the AIC differences among the models are quite insignificant. Thus, it is unanimous that Model #2: Pairwise is our final model.
 
-```{r echo=FALSE}
-# Predictions on training data
-mod_sum1 = summary(lm_1)  
-pred_lm1 = predict(lm_1, newdata = train_set)
-pred_step.model = predict(step.model, newdata = stepdata)
-
+```{r performance, echo=FALSE, message=FALSE, warning=FALSE}
 # Model accuracy
 results = data.frame(Models = c("Model #1: Backwards" , "Model #2: Pairwise", "Model #3: K-fold"),
                 R.squared = c(mod_sum1[["r.squared"]], stmr2, mod_sum[["r.squared"]]), 
@@ -691,21 +703,88 @@ results %>% knitr::kable(digits = 3L, caption = 'Performance Statistics & Error 
 
 ## PREDICTIONS
 
-Using the test data and the selected final model, a comparison in the prediction statistic was conducted. 
+Using the test data and the selected final model, Model #2: Pairwise, a comparison in the prediction statistic was conducted. 
 
 
-```{r include=FALSE, eval=FALSE}
-# Data Transformation to match train data
-eval_set = complete(mice(data = eval_set, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
+```{r predictions, echo=FALSE, message=FALSE, warning=FALSE}
+# Cleaning test set for Model#1
+test_df1<-  eval_set %>% dplyr::select(-c(TEAM_BATTING_HBP, INDEX)) %>%
+  mutate(TEAM_BATTING_1B =
+         TEAM_BATTING_H -
+         (TEAM_BATTING_2B + TEAM_BATTING_3B + TEAM_BATTING_HR)) %>%
+  mutate_if(is.integer, as.numeric)
+test_df1 <- complete(mice(data = test_df1,
+                         method = "pmm",
+                         seed = 9450,
+                         print=FALSE), 3)
+  
+test_df1<-
+  test_df1 %>%  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
+         SLG = (TEAM_BATTING_1B + (2*TEAM_BATTING_2B)+ (3*TEAM_BATTING_3B)+ (4*TEAM_BATTING_HR))/AB) %>% dplyr::select(-c(AB, TEAM_BATTING_H))
 
-# Add final model
-predictions = predict(ADD-MODEL-HERE, newdata = eval_set)
+# Cleaning test set for Model #2
+BxCox <- function(x, l) {
+  ifelse(l == 0, log(x), (x ^ l - 1) / l)
+}
+BCL <- data.table(Metric = c('TEAM_PITCHING_H', 'TEAM_FIELDING_E',
+                             'TEAM_BASERUN_SB', 'TEAM_PITCHING_HR',
+                             'TEAM_BATTING_HR', 'TEAM_PITCHING_BB',
+                             'TEAM_PITCHING_SO', 'TEAM_BATTING_3B',
+                             'TEAM_BASERUN_CS'),
+                  Lambda = c(-2.5, -0.7, 0, 0.6, 0.6, -0.1, -0.35, 0, 0.5))
+setkey(BCL, Metric)
+MBT <- setDT(eval_set)
+#MBT[, `:=`(TEAM_BATTING_HBP = NULL)]
+MBTlng <- melt(MBT, id.vars = 'INDEX', variable.name = 'Metric',
+               value.name = 'Value', variable.factor = FALSE)
+MBTlng[, Value := as.double(Value)]
+MBTlng <- BCL[MBTlng, on = 'Metric']
+MBTlng[!is.na(Lambda), Value := BxCox(Value, Lambda)]
+MBTlng[, Lambda := NULL]
+MBTlngSC <- copy(MBTlng)
+# Remove infinities
+MBTlngSC[, Value := ifelse(is.infinite(Value), NA, Value)]
+# Impute, Center, and Scale
+MBTlngSC[, Value := replace(Value, is.na(Value), mean(Value, na.rm = TRUE)),
+       keyby = Metric]
+MBTlngSC[, Value := scale(Value, center = TRUE, scale = TRUE), keyby = Metric]
+MBTSC <- dcast(MBTlngSC, INDEX ~ Metric, value.var = 'Value')
 
+# Cleaning test set for Model #3
+test_df = complete(mice(data = eval_set, method = "pmm", maxit = 5, seed = 525, print = FALSE), 3)
+test_df$TEAM_BATTING_1B = test_df$TEAM_BATTING_H - 
+  (test_df$TEAM_BATTING_2B + test_df$TEAM_BATTING_3B + test_df$TEAM_BATTING_HR)
+test_df = cbind(test_df, sapply(test_df[1:length(test_df)], function(x) x^2))
+names(test_df) = make.unique(names(test_df), sep = "_")
+```
+
+```{r echo=FALSE}
+# Model #1
+predictions = predict(lm_1, newdata = test_df1)
 results = cbind(dataset = c('Training Data', 'Test Prediction'), 
-                bind_rows(describe(train_set$TARGET_WINS), describe(predictions))) 
+                rbind(psych::describe(train_set$TARGET_WINS), psych::describe(predictions))) 
 rownames(results) = NULL
+results[,-c(2,8,11)] %>% knitr::kable(digits = 2L, caption = 'Prediction Comparison with Model #1: Backwards')
 
-results[,-c(2,8,11)] %>% knitr::kable(digits = 3L, caption = 'Prediction Comparison with Final Model')
+# Model #2
+predictions <- predict(stepModel, MBTSC)
+results = cbind(dataset = c('Training Data', 'Test Prediction'), 
+                rbind(psych::describe(train_set$TARGET_WINS), psych::describe(predictions))) 
+rownames(results) = NULL
+results[,-c(2,8,11)] %>% knitr::kable(digits = 2L, caption = 'Prediction Comparison with Model #2: Pairwise')
+
+# Model #3
+predictions = predict(step.model$finalModel, newdata = test_df)
+results = cbind(dataset = c('Training Data', 'Test Prediction'), 
+                rbind(psych::describe(train_set$TARGET_WINS), psych::describe(predictions))) 
+rownames(results) = NULL
+results[,-c(2,8,11)] %>% knitr::kable(digits = 2L, caption = 'Prediction Comparison with Model #3: K-fold')
 ```
 
 ## CONCLUSIONS
+
+
+## CODE APPENDIX
+
+The code chunks below represent the R code called in order during the analysis.
+They are reproduced in the appendix for review and comment.
