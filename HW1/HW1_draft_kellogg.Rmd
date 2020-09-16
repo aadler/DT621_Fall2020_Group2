@@ -695,7 +695,7 @@ results = data.frame(Models = c("Model #1: Backwards" , "Model #2: Pairwise", "M
                 R.squared = c(mod_sum1[["r.squared"]], stmr2, mod_sum[["r.squared"]]), 
                 adj.R.squared = c(mod_sum[["adj.r.squared"]], stmar2, mod_sum[["adj.r.squared"]]),
                 AIC = c(AIC(lm_1), AIC(stepModel), AIC(step.model$finalModel)),
-                RSME = c(sqrt(mean((train_set$TARGET_WINS - pred_lm1)^2)), stmRMSE,
+                RSME = c(sqrt(mean((train_df2$TARGET_WINS - pred_lm1)^2)), stmRMSE,
                          sqrt(mean((stepdata$TARGET_WINS - pred_step.model)^2))))
 results %>% knitr::kable(digits = 3L, caption = 'Performance Statistics & Error Measure of Models' )
 ```
