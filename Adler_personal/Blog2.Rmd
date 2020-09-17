@@ -1,0 +1,101 @@
+---
+title: "Blog Post 2: Training & Testing: Linear Regression"
+subtitle: "DT 621---Fall 2020"
+author: "Avraham Adler"
+date: "9/17/2020"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, error=FALSE)
+```
+
+# Training & Testing Sets
+When originally taught, most students perform their regression analysis on the
+totality of their data. If one is solely interested in past behavior, this is
+proper. However, if one is interested in predicting future behavior, it is
+better practice to reserve some of the data you have for testing purposes. This
+reflects the "unknown" future data which is the true intent of the model.
+
+# Experiment
+We will create synthetic data representing both past and future observations.
+A quarter of the data will be the "true" future data. This will never be seen
+during the modeling process. The remaining 75% reflects the "observed"
+data---the full complement of what is available to the data scientist. 
+
+Two models will be built using this data. One using all of it and the second
+using A 75/25 split into a training and testing set. The selected models from
+each group will then be compared against the "future" data.
+
+# Raw Data
+We will use a simple linear model as our example:
+\[
+y_i = 3.2 + 1.6x_{1i} + 3.4x_{2i} - 0.8x_{3i} + \epsilon_i
+\]
+
+We will call the model using glm with a Gaussian link.
+
+```{r loadPackages}
+library(caret)
+```
+```{r createData}
+set.seed(245)
+x1 <- runif(400, 0, 100)
+x2 <- rnorm(400, 0, 10)
+x3 <- rexp(400, 1/5)
+y <- 3.2 + 1.6 * x1 + 3.4 * x2 - 0.8 * x3 + rnorm(400, 0, 10)
+futIDX <- sample(400, 100)
+x1f <- x1[futIDX]
+x1p <- x1[-futIDX]
+x2f <- x2[futIDX]
+x2p <- x2[-futIDX]
+x3f <- x3[futIDX]
+x3p <- x3[-futIDX]
+yf <- y[futIDX]
+yp <- y[-futIDX]
+testIDX <- sample(300, 300 * 0.25)
+x1trn <- x1p[-testIDX]
+x1tst <- x1p[testIDX]
+x2trn <- x2p[-testIDX]
+x2tst <- x2p[testIDX]
+x3trn <- x3p[-testIDX]
+x3tst <- x3p[testIDX]
+ytrn <- yp[-testIDX]
+ytst <- yp[testIDX]
+```
+
+# Linear Regression Model
+This is almost unfair with regards to the training/testing split. Normally, the
+validation set is used to fine tune the hyperparameters. In simple linear
+regression there are none. If the second model returns better results, it is
+very strong evidence that there is value in simply fitting to less data to
+prevent overfitting!
+
+## Training
+```{r linearFit}
+trc <- trainControl(method = 'cv', number = 10)
+m1 <- train(data.frame(x1 = x1p, x2 = x2p, x3 = x3p), yp, method = 'glm',
+            trControl = trc, family = gaussian)
+m2 <- train(data.frame(x1 = x1trn, x2 = x2trn, x3 = x3trn), ytrn, method = 'glm',
+            trControl = trc, family = gaussian)
+summary(m1)
+summary(m2)
+```
+
+Both models recover the parameters decently, although the intercept is somewhat
+off. The last is almost always due to process risk, the natural vagaries of
+stichastic simulation.
+
+## Testing
+```{r linearTest}
+m1p <- predict(m1, data.frame(x1 = x1f, x2 = x2f, x3 = x3f))
+m2p <- predict(m2, data.frame(x1 = x1f, x2 = x2f, x3 = x3f))
+defaultSummary(data.frame(pred = m1p, obs = yf))
+defaultSummary(data.frame(pred = m2p, obs = yf))
+```
+
+The second model, fit on less data, has better accuracy on the "future" data.
+This can only be due to overfitting. In a future blog post, we may investigate
+results when there **are** hyperparameters which can be tuned.
