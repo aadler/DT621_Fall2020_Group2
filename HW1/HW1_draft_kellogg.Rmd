@@ -5,7 +5,9 @@ author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
     Bryan Persaud, Jeff Shamp
 date: "9/27/2020"
 output:
-  pdf_document: default
+  pdf_document:
+    toc: TRUE
+    toc_depth: 4
   html_document: default
 ---
 
@@ -365,8 +367,8 @@ variables: `TEAM_PITCHING_SO` and `TEAM_PITCHING_H.`
   ~123 strikeouts per game. This is only possible if every one of the 162 games
   went approximately 40 innings, and each out was a strikeout---which clearly has
   never happened.
-  * **TEAM_PITCHING_H**: The largest outlier for this vaiable is over 30,000
-  which is simlarly highly unlikely. 
+  * **TEAM_PITCHING_H**: The largest outlier for this variable is over 30,000
+  which is similarly highly unlikely. 
 
 Since both appear with a heavy right skew, we will use median and IQR to remove
 the outliers.
@@ -503,8 +505,9 @@ ggplot(data = modified_set %>%
   facet_wrap(~ STAT, scales = "free")
 ```
 
-# BUILD MODELS
-## Base Model
+# MODEL TRAINING
+## Model 1
+### Base Model
 We will start with a simple linear model to serve as a baseline. This includes
 all variables in the dataset. 
 
@@ -512,7 +515,7 @@ all variables in the dataset.
 lm_reg = lm(data=train_set, TARGET_WINS ~ .)
 ```
 
-## Model 1
+### Enhanced Model
 Model 1 includes all variables except Singles, Triples, Base Hits, Strikeouts by
 pitchers, Walks allowed, and Batters Hit by Pitch. The final variables were
 chosen as a result of backwards `dplyr::selection` based on null hypothesis
@@ -579,37 +582,58 @@ ts2 <- data.frame(apply(ts2, 2, scale))
 ts2$TARGET_WINS <- train_set$TARGET_WINS
 ```
 
+### Stepwise Model
 A fully specified model with all the interactions will be the starting point for
-the stepwise regression, which uses AIC as its target metric.
+the stepwise regression, which uses AIC as its target metric. For interest, this
+model will be compared with both the null model and the fully-specified model
+from where the stepwise process begins
 
 ```{r model2}
-crazyModel <- lm(TARGET_WINS ~
+nullModel <- lm(TARGET_WINS ~ 1, data = ts2)
+fullModel <- lm(TARGET_WINS ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
   (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
   TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, data = ts2)
-stepModel <- stepAIC(crazyModel, scope = list(upper = ~
+stepModel <- stepAIC(fullModel, scope = list(upper = ~
   (TEAM_BASERUN_CS + TEAM_BASERUN_SB) ^ 2 + (TEAM_BATTING_2B + TEAM_BATTING_3B +
   TEAM_BATTING_BB + TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO) ^ 2 +
   (TEAM_FIELDING_DP + TEAM_FIELDING_E) ^ 2 + (TEAM_PITCHING_BB +
   TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_PITCHING_SO) ^ 2, lower = ~ 1),
   direction = 'both', trace = 0)
+snm <- summary(nullModel)
+sfm <- summary(fullModel)
 sstm <- summary(stepModel)
 stmr2 <- sstm$r.squared
 stmar2 <- sstm$adj.r.squared
-stmAIC <- prettyNum(AIC(stepModel), digits = 2L, big.mark = ',')
+stmAIC <- AIC(stepModel)
 stmRMSE <- sqrt(mean(stepModel$residuals ^ 2))
-stmF <- prettyNum(sstm$fstatistic, digits = 5L)
-stmFp <- pf(sstm$fstatistic[[1]], sstm$fstatistic[[2]], sstm$fstatistic[[3]],
-            lower.tail = FALSE)
 ```
 
-### Coefficient Discussion:
+### Discussion
+#### Models
 ```{r model2_discuss}
+knitr::kable(snm$coefficients, digits = 3L,
+             caption = 'Null Model')
+knitr::kable(sfm$coefficients, digits = 3L,
+             caption = 'Full Model with All Features & Pairwise Class Interactions')
 knitr::kable(sstm$coefficients, digits = 3L,
-             caption = 'Step Model with Pairwise Class Interactions Output')
+             caption = 'Stepwise Model with Pairwise Class Interactions')
 ```
 
+The null model expects teams to lose slightly more than half their games. The
+full model has a lower intercept, which indicates that the impact of all the
+features explains why teams *win* slightly more than just the grand mean does.
+The stepwise model is similar, having a lower intercept than the null but a
+higher intercept that the full model.
+
+Also, the full model has the higher \(R^2\) and the stepwise model has the
+higher *adjusted* \(R^2\). This is expected, as there is no penalty for adding
+more parameters in regular \(R^2\) measures.
+
+The **stepwise** model will be the one discussed below.
+
+#### Coefficients
 Most of the coefficients are reasonable within the context of the game of
 baseball. These two statements are axiomatic:
   
@@ -664,7 +688,7 @@ should be reviewed for sanity and sense!!
 The curiosities above can *possibly* be resolved by looking at the interaction
 terms. The pitching and batting home run and strikeout coefficients are an order
 of magnitude greater than all the others. It is likely that the negative
-coefficients in some of the batting stats and positive coefficents in some of
+coefficients in some of the batting stats and positive coefficients in some of
 the pitching stats are being used to "temper" the effect of SOs and HRs.
 
 A possible explanation for the negative coefficient for getting double plays, is
@@ -679,7 +703,7 @@ propensity to strand runners on base. It would be interesting to see a breakdown
 between the American and National leagues, as the latter tends to be somewhat
 better at "small ball" and moving the runners along.
 
-### Model 3
+## Model 3
 The final model is a Stepwise Regression with Repeated k-fold Cross-Validation,
 and higher order polynomials variables were introduced into the full model.
   
@@ -705,31 +729,31 @@ Once again, Cook's distance is use to decide if an individual entity is an extre
 value or not.
 
 ```{r model3}
-stepdata = subset(train_set, select = -c(AB, SLG, TEAM_BATTING_HBP))
-stepdata = cbind(stepdata, sapply(stepdata[2:length(stepdata)], function(x) x^2))
-names(stepdata) = make.unique(names(stepdata), sep = "_")
-model = lm(TARGET_WINS ~ ., data = stepdata)
-cooksd = cooks.distance(model)
-influential = as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm = TRUE))])
-stepdata.2 = stepdata[-c(influential), ]
+stepdata <- subset(train_set, select = -c(AB, SLG, TEAM_BATTING_HBP))
+stepdata <- cbind(stepdata, sapply(stepdata[2:length(stepdata)], function(x) x^2))
+names(stepdata) <- make.unique(names(stepdata), sep = "_")
+model <- lm(TARGET_WINS ~ ., data = stepdata)
+cooksd <- cooks.distance(model)
+influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm = TRUE))])
+stepdata.2 <- stepdata[-c(influential), ]
 # Set up repeated k-fold cross-validation
 set.seed(525)
-train.control = trainControl(method = "cv", number = 10)
+train.control <- trainControl(method = "cv", number = 10)
 # Train the model
-step.model = train(TARGET_WINS ~ ., data = stepdata.2, method = "lmStepAIC", 
+step.model <- train(TARGET_WINS ~ ., data = stepdata.2, method = "lmStepAIC", 
                    trControl = train.control, trace = FALSE)
 # Final model 
-step.model = lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_2B + TEAM_BASERUN_SB + 
+step.model <- lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_2B + TEAM_BASERUN_SB + 
                   TEAM_BASERUN_CS + TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_FIELDING_E + 
                   TEAM_FIELDING_DP + TEAM_BATTING_BB_1 + TEAM_BATTING_SO_1 + 
                   TEAM_BASERUN_CS_1 + TEAM_PITCHING_H_1 + TEAM_PITCHING_BB_1 + 
                   TEAM_FIELDING_E_1 + TEAM_FIELDING_DP_1 + TEAM_BATTING_1B_1, 
                 data = stepdata.2)
 # Summary of the model
-mod_sum3 = summary(step.model)
+mod_sum3 <- summary(step.model)
 ```
 
-**Coefficient Discussion: **
+### Coefficient Discussion
 ```{r model3_discuss}
 mod_sum3[["coefficients"]] %>% 
   knitr::kable(digits = 3L, 
@@ -748,29 +772,72 @@ with strikeouts but it will also increase the chances of hitting home runs (even
 1B, 2B, 3B), and that is pretty good exchange that most teams are willing carry
 out.
 
-## SELECTING A MODEL & PREDICTIONS
+# MODEL SELECTION
+## Criteria
+In order to select the best model to make predictions, we looked at the
+following goodness of fit metrics:
 
-In order to select the best model to make predictions, we looked at some measurements that tells us how well each model fits the training. These include the 1) $R^2$, which represents the proportion of the variance explained by a model; 2) $adj R^2$, which is a modified version of $R^2$; 3) *Root Mean Squared Error* (RMSE), which is the square root of the mean squared error; and 4) *Akaike Information Criterion* (AIC), which is an estimator of out-of-sample prediction error. 
+ 1. \(R^2\), which represents the proportion of the variance explained by the
+ model
+ 2. Adjusted \(R^2\), which is a modified version of \(R^2\) taking parsimony
+ into consideration
+ 3. *Root Mean Squared Error* (RMSE), which is the square root of the mean
+ squared difference between the observation and the fitted value
+ 4. *Akaike Information Criterion* (AIC), which is an information-criteria based
+ estimate of the Kullback-Leibler divergence from the current model to the
+ "true" model. One of the nice results of the theory of information-criteria
+ based measures is that there is included recognition of parsimony.
 
+## Performance
 ```{r performance}
 # Model accuracy
-results = data.frame(
+results <- data.frame(
   Models = c("Model #1: Backwards" , "Model #2: Pairwise", "Model #3: K-fold"),
   R.squared = c(mod_sum1[["r.squared"]], stmr2, mod_sum3[["r.squared"]]), 
-  adj.R.squared = c(mod_sum1[["adj.r.squared"]], stmar2, mod_sum3[["adj.r.squared"]]),
-  RSME = c(sqrt(mean(lm_1$residuals ^ 2)), stmRMSE, sqrt(mean(step.model$residuals ^ 2))),
+  adj.R.squared = c(mod_sum1[["adj.r.squared"]], stmar2,
+                    mod_sum3[["adj.r.squared"]]),
+  RSME = c(sqrt(mean(lm_1$residuals ^ 2)), stmRMSE,
+           sqrt(mean(step.model$residuals ^ 2))),
   AIC = c(AIC(lm_1), AIC(stepModel), AIC(step.model)))
 results %>% knitr::kable(digits = 3L, 
                          caption = 'Performance Statistics & Error Measure of Models')
 ```
 
-It was an interesting process when it came comparing the three models and selecting which would be our best model given that their performance statistics and error measurements were not significantly different from each other. From the table above, it is apparent that Model #3: K-fold accounts for nearly 45% of the variation in the dependent variable with the independent variables because $R^2 = 0.456$, $adjR^2 = 0.450$ which is acceptable as a good model. However, Model #1: Backwards has a smallest RSME of all the models, which ranks as number one as the criteria we are using to decide on a model. This measure suggest how far off an actual value is from the model's prediction for that value, and it indicates that there is a greater reduction in the randomness for Model #1: Backwards than the other model. But, how different is the RSME of Model #1: Backwards versus the RSME of Model #3: K-fold? We agreed that it is insignificant. Therefore, because the RMSE and adjusted $R^2$ statistics already include a minor adjustment for the number of coefficients estimated, to evaluate the model complexity, we compared the AIC. As a result, Model #1: Backwards would have been the way to go, however, it was deemed that the AIC difference with Model #3 is also insignificant. 
+It was interesting to compare the three models given that their performance
+statistics and error measurements were not significantly different from each other.
+**Model #2: Pairwise** was the worst performing model for all of our metrics, and
+was eliminated immediately. **Model #3: K-fold** accounts for nearly 45% of the
+variation in the dependent variable with the independent variables because its
+\(R^2\) is 0.456 and its adjusted \(R^2\) is = 0.450, both of which are
+acceptable for a good model. However, **Model #1: Backwards** has the smallest
+RSME of all the models. RMSE is a measure of how far off predictions are from
+the actual, giving extra weight to outliers through summing the squared
+differences. This demonstrates a greater reduction in the randomness by
+**Model #1: Backwards**. But its difference from **Model #3: K-fold** is only
+0.022. It is hard to judge if that is a significant difference. We thus also
+considered AIC. With AIC, it is not the magnitude of the value which is
+important, but the difference between the various model AIC's. The magnitude is
+a function of the number of observations. Accepted rules of thumb in the
+statistical literature are that if the difference is greater than 10, there is
+effectively no support for the model with the larger AIC
+(Section 2.6, Burnham & Anderson 2002). As a result, **Model #1: Backwards**
+is our selected model.
 
-### PREDICTIONS
+## Discussion
+This is an interesting model in that given no other information, a team would be
+expected to win negative games, which is clearly impossible. That being said, it
+is an indication of the predictive power of the engineereed **slugging** feature
+that allows small increments in slugging to result in significant shifts in
+target wins. This engineered feature contains within it numerous interactions.
+It combines scaled versions of some features and normalizes them for the
+combination of other features. Perhaps that is why it is so significant.
 
-Using the evaluation data set and the three models, a comparison in the predictions statistic with the training data was conducted. Interestingly, while Model #1: Backwards and Model #3: K-fold resulted in better performance statistics and error measurements, it is evident that Model #2: Pairwise yields closer predictions when the other two slightly under-predicts. With all in agreement, under-predicting wins and leaving teams and managers with potential perspective of costs is worse than over-predicting and causing inconvenience. 
+# PREDICTIONS
+**Model #1: Backwards** was used to predict the target wins base on the
+evaluation set, once processed similarly to the training data. As the number of
+games won must be integral, the values were rounded to the closest integer.
 
-```{r eval_set}
+```{r eval_set, eval=FALSE}
 eval_set = eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
   bind_cols(eval_set) %>%
@@ -810,24 +877,47 @@ names(test_df3) = make.unique(names(test_df3), sep = "_")
 ```
 
 ```{r predictions}
-predictions = data.frame(predict(lm_1, newdata = test_df1), 
-                         predict(stepModel, test_df2), 
-                         predict(step.model, newdata = test_df3))
-results = cbind(
-  Datasets = c('Training Data', 'Model #1: Backwards', 'Model #2: Pairwise',
-               'Model #3: K-fold'), 
-  rbind(psych::describe(train_set$TARGET_WINS), psych::describe(predictions))) 
-rownames(results) = NULL
-results[,-c(2,8,11)] %>% 
-  knitr::kable(digits = 2L, caption = 'Prediction Comparison on Evaluation Set')
+eval_set <- paste0(urlRemote, pathGithub, fileEval) %>% read.csv()
+eval_set <- eval_set %>% na.omit() %>%
+  summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
+  bind_cols(eval_set) %>%
+  filter(TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO, probs = c(0.25), na.rm = TRUE) 
+         - 1.5 * iqr, 
+         TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, probs = c(0.75), na.rm = TRUE) 
+         + 1.5 * iqr) %>%
+  dplyr::select(-iqr)
+
+eval_set <- eval_set %>% na.omit() %>%
+  summarise(iqr = IQR(TEAM_PITCHING_H)) %>%
+  bind_cols(eval_set) %>%
+  filter(TEAM_PITCHING_H > quantile(TEAM_PITCHING_H, probs = c(0.25), na.rm = TRUE) 
+         - 1.5 * iqr,
+         TEAM_PITCHING_H < quantile(TEAM_PITCHING_H, probs = c(0.75), na.rm = TRUE) 
+         + 1.5 * iqr) %>%
+  dplyr::select(-iqr)
+
+eval_set <- complete(mice(data = eval_set, method = "pmm", seed = 9450, print=FALSE), 3)
+
+eval_set <- eval_set %>% dplyr::select(-INDEX) %>%
+  mutate_if(is.integer, as.numeric) %>%
+  mutate(TEAM_BATTING_1B = TEAM_BATTING_H - (TEAM_BATTING_2B + TEAM_BATTING_3B +
+                                               TEAM_BATTING_HR))
+eval_set <- eval_set %>%
+  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
+         SLG = (TEAM_BATTING_1B + 2 * TEAM_BATTING_2B + 3 * TEAM_BATTING_3B +
+                  4 * TEAM_BATTING_HR) / AB)
+predictions <- round(predict(lm_1, newdata = eval_set))
+summary(predictions)
+predictions
 ```
 
-Therefore, based on these reasoning, it is unanimous that **Model #2: Pairwise** is our final model because the coefficients of the model with it's the interacting variables makes for better, realistic predictions.
+# REFERENCES
 
-## CONCLUSIONS
+ * Burnham, Kenneth P., and David R. Anderson. 2002. Model Selection and
+ Multimodel Inference: A Practical Information-Theoretic Approach. Second.
+ New York: Springer Science+Business Media, Inc.
 
-
-## CODE APPENDIX
+# CODE APPENDIX
 The code chunks below represent the R code called in order during the analysis.
 They are reproduced in the appendix for review and comment.
 ```{r appendix, include=FALSE}
@@ -883,7 +973,7 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r performance}
 ```
-```{r eval_set}
-```
+<!--```{r eval_set}
+```-->
 ```{r predictions}
 ```
