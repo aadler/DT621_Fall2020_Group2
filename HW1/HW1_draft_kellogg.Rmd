@@ -541,9 +541,9 @@ knitr::kable(summary(lm_reg)$coefficients, digits = 3L,
 ```
 
 We can see off the bat that a few variables *exceed* the 0.05 p-value threshold for 
-significance: `TEAM_BATTING_H`, `TEAM_PITCHING_H` and `TEAM_PITCHING_BB`. Additionally, 
-we see that both `TEAM_BATTING_1B` and `AB` have no coefficients at all! This is likely 
-due to the fact that they are colinear with other variables in the model. 
+significance. Additionally, we see that both `TEAM_BATTING_1B` and `AB` have no 
+coefficients at all! This is likely due to the fact that they are colinear with other 
+variables in the model. 
 
 
 ### Enhanced Model
@@ -593,7 +593,10 @@ There are some counter intuitive results, which is expected given that baseball 
 messy, imprecise game that has evolved over time. To that end, we should expect some 
 seemingly strange results from algorithmic regression.
 
-Fielding double plays and batting doubles both appear to have negative impacts
+First, we see that the intercept itself is negative. This means that, given no information
+about any of the statistics, we would predict that a team would lose (by a lot!). 
+
+Next, fielding double plays and batting doubles both appear to have negative impacts
 on wins even though they *should* be positive impacts. Turning double plays,
 while a good for the defensive team, may suggest a larger, negative issue.
 Namely, weak pitching that leads to runners on base. Similarly, batting doubles,
