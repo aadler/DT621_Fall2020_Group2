@@ -7,7 +7,7 @@ date: "9/27/2020"
 output:
   pdf_document:
     toc: TRUE
-    toc_depth: 4
+    toc_depth: 2
   html_document: default
 ---
 
@@ -17,6 +17,7 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 
 ```{r loadData, include=FALSE}
+##################### libraries and variables 
 library(tidyverse)
 library(ggplot2)
 library(corrplot)
@@ -53,6 +54,8 @@ gut-check for our final predictions; if the predicted wins are too high or too
 low, we know something in our model is probably off. 
 
 ```{r wins, fig.height = 2.5, fig.width = 5, fig.align = 'center'}
+##################### DATA EXPLORATION
+
 avgWins <- mean(train_set$TARGET_WINS)
 sdev <- sd(train_set$TARGET_WINS)
 l1 <- mean(train_set$TARGET_WINS) - (2 * sdev)
@@ -86,6 +89,8 @@ and strikeouts by pitchers and batters (`TEAM_BASERUN_SB`, `TEAM_PITCHING_SO`,
 outs in a season, so this is something we'll most certainly have to impute. 
 
 ```{r pctNull, fig.height = 2, fig.width = 5, fig.align = 'center'}
+
+# percent null for each variable
 pct_null <- data.frame(do.call("rbind", map(train_set %>% dplyr::select(-INDEX),
                                             ~ mean(is.na(.)))))
 colnames(pct_null) <- c('PCT_NULL')
@@ -110,6 +115,7 @@ Walks Allowed would all have a **negative** impact on the total wins. In other
 words, as these values increase, we expect that the team is less likely to win.  
 
 ```{r negFactors, fig.align = 'center'}
+# variables expected to have a negative impact on wins
 negSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Errors' = TEAM_FIELDING_E, 
@@ -141,6 +147,7 @@ Doubles, Triples, Home Runs, Walks, Batters getting hit by pitches, Stolen
 Bases, Double Plays, and Strikeouts by Pitchers.  
   
 ```{r posFactors, fig.align = 'center'}
+# variables expected to have a positive impact on wins
 posSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Base hits' = TEAM_BATTING_H, 
@@ -182,7 +189,7 @@ modeling because we want to make sure our predictions aren't skewed because of
 them.
 
 ```{r summaryInfo, fig.height = 3, fig.width = 5, fig.align = 'center'}
-#summary(train_set)
+# understanding outliers by variable
 totalOutliers <- data.frame(
   sapply(train_set %>% dplyr::select(-INDEX, -TARGET_WINS, - TEAM_BATTING_HBP), 
        function(x){length(boxplot.stats(x)$out)/nrow(train_set)}))
@@ -203,6 +210,7 @@ that there are very *few* (or no) extreme values. **Home Runs allowed**
 **Home Runs by batters** (`TEAM_BATTING_HR`) are some examples.
 
 ```{r fewOutliers, fig.height = 2, fig.width = 6, fig.align = 'center'}
+# distributions of variables with few outliers
 set1 <- train_set %>%
   dplyr::select('Home Runs by batters' = TEAM_BATTING_HR, 
          'Strikeouts by batters' = TEAM_BATTING_SO,  
@@ -232,6 +240,7 @@ that there are some seasons with some abnormally high or low values. **Errors**
 (`TEAM_BATTING_BB`), and **Stolen bases** (`TEAM_BASERUN_SB`) are some examples. 
 
 ```{r manyOutliers, fig.height = 2, fig.width = 6, fig.align = 'center'}
+# distributions of variables with many outliers
 set2 <-  train_set %>%
   dplyr::select('Walks by batters' = TEAM_BATTING_BB, 
          'Stolen bases' = TEAM_BASERUN_SB,  
@@ -270,6 +279,7 @@ The remaining stats, **Walks Allowed** (`TEAM_PITCHING_BB`),
 29 and 99 outliers. 
 
 ```{r otherOutliers, fig.height = 3.5, fig.width = 7, fig.align = 'center'}
+# distribution of all other variables 
 set3 <-  train_set %>%
   dplyr::select('Base Hits by batters' = TEAM_BATTING_H, 
          'Doubles by batters' = TEAM_BATTING_2B,  
@@ -349,6 +359,10 @@ outlier is evaluated to ensure:
 We can take another look at the outliers for each variable: 
 
 ```{r outliers_1, fig.height = 4, fig.width = 8, fig.align = 'center'}
+
+##################### DATA PREPARATION
+
+# visualizing variables pre outlier removal
 train_set %>%
   dplyr::select(-TARGET_WINS, -INDEX) %>%
   pivot_longer(everything(), 
@@ -374,6 +388,7 @@ Since both appear with a heavy right skew, we will use median and IQR to remove
 the outliers.
 
 ```{r iqr_removal_SO}
+# remove outliers
 train_set<- train_set %>%
   na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
@@ -412,6 +427,7 @@ We can take a look at the distributions of these variables after removing the
 outliers: 
 
 ```{r outlier_boxplot, fig.height = 4, fig.width = 8, fig.align = 'center'}
+# visualizing variables post outlier removal
 train_set %>%
   dplyr::select(-TARGET_WINS, -INDEX) %>%
   pivot_longer(everything(), 
@@ -438,6 +454,7 @@ these imputations. It creates predictive values for the mean instead of imputing
 the IQR values.
 
 ```{r impute_train}
+# imputing values
 train_set <- complete(mice(data = train_set, 
                          method = "pmm", 
                          seed = 9450, 
@@ -456,6 +473,7 @@ Singles = Total\ Hits - (Doubles + Triples + Homeruns)
 \]
 
 ```{r singles}
+# defining singles variable 
 train_set<- train_set %>%
   dplyr::select(-INDEX) %>%
   mutate_if(is.integer, as.numeric) %>%
@@ -482,6 +500,7 @@ Because we don't have a statistic for at-bats, we will approximate it as follows
 \]
 
 ```{r make_slg_obp}
+# defining at bats and slugging variables
 train_set<- train_set %>%
   mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
          SLG = (TEAM_BATTING_1B + 2 * TEAM_BATTING_2B + 3 * TEAM_BATTING_3B +
@@ -493,6 +512,7 @@ As a gut-check, we can take a look at Slugging in comparison to Triples
 should have a positive correlation with the total number of wins. 
 
 ```{r slugging_compare, fig.height = 2.5, fig.width = 8, fig.align = 'center'}
+# visualizing slugging compared to wins
 modified_set <- train_set %>%
   dplyr::select(TARGET_WINS, SLG, TEAM_BATTING_3B, TEAM_BATTING_HR)
 ggplot(data = modified_set %>%
@@ -505,27 +525,50 @@ ggplot(data = modified_set %>%
   facet_wrap(~ STAT, scales = "free")
 ```
 
-# MODEL TRAINING
+# BUILD MODELS
 ## Model 1
 ### Base Model
 We will start with a simple linear model to serve as a baseline. This includes
 all variables in the dataset. 
 
 ```{r baseModel}
+##################### BUILD MODELS
+##### Model 1: Backwards Selection
 lm_reg = lm(data=train_set, TARGET_WINS ~ .)
+
+knitr::kable(summary(lm_reg)$coefficients, digits = 3L,
+             caption = 'Base Model Regression Output')
 ```
 
+We can see off the bat that a few variables *exceed* the 0.05 p-value threshold for 
+significance: `TEAM_BATTING_H`, `TEAM_PITCHING_H` and `TEAM_PITCHING_BB`. Additionally, 
+we see that both `TEAM_BATTING_1B` and `AB` have no coefficients at all! This is likely 
+due to the fact that they are colinear with other variables in the model. 
+
+
 ### Enhanced Model
-Model 1 includes all variables except Singles, Triples, Base Hits, Strikeouts by
-pitchers, Walks allowed, and Batters Hit by Pitch. The final variables were
-chosen as a result of backwards `dplyr::selection` based on null hypothesis
-testing for non-zero slope.
-  
+
+We used a combination of domain knowledge and data analysis to justify removing/retaining 
+features. First, we are keeping the coefficient for `TEAM_BATTING_HR` since its p-value
+is marginally above the general threshold and knowledge of the game suggests it is important. 
+We also chose to remove the `TEAM_BATTING_HBP` variable because most of the values are
+missing from the dataset. 
+
+The remaining variables were chosen as a result of **backwards selection** based on null 
+hypothesis testing for non-zero slope. This is done by removing one variable at a
+time to determine the minimum number of significant variables needed for prediction.
+
+Altogether, we end up **removing** 7 total variables: `TEAM_BATTING_1B`, `AB`, 
+`TEAM_BATTING_3B`, `TEAM_BATTING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and
+`TEAM_BATTING_1B`.
+
+
 ### Further data transformation
-We will use Cook's distance to remove outliers that are influencing the fit of
+We will use Cook's distance to remove additional outliers that are influencing the fit of
 the model above. We will use a cutoff of \(\frac{4}{N}\).
 
 ```{r cooks_distance}
+# removing outliers via cooks distance
 lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B + TEAM_BATTING_HR +
           TEAM_BATTING_BB + TEAM_BATTING_SO + TEAM_BASERUN_SB +
             TEAM_BASERUN_CS + TEAM_PITCHING_HR + TEAM_PITCHING_H +
@@ -539,19 +582,16 @@ lm_1<- lm(TARGET_WINS ~ TEAM_BATTING_2B + TEAM_BATTING_HR +
             TEAM_FIELDING_E + TEAM_FIELDING_DP + SLG, data = train_df2)
 mod_sum1 = summary(lm_1)  
 ```
+
 ```{r model1_coef}
 knitr::kable(summary(lm_1)$coefficients, digits = 3L,
              caption = 'Backwards Model Regression Output')
 ```
 
 ### Coefficient Discussion
-First, we are keeping the coefficient for `TEAM_BATTING_HR` since it's p-value
-is marginally above the general threshold and knowledge of the game suggests it
-is important. There are some counter intuitive results, which is expected given
-that baseball is a messy, imprecise game that has evolved over time. To that
-end, we should expect some seemingly strange results from algorithmic
-regression. We used a combination of domain knowledge and data analysis to
-justify retaining features. 
+There are some counter intuitive results, which is expected given that baseball is a 
+messy, imprecise game that has evolved over time. To that end, we should expect some 
+seemingly strange results from algorithmic regression.
 
 Fielding double plays and batting doubles both appear to have negative impacts
 on wins even though they *should* be positive impacts. Turning double plays,
@@ -577,6 +617,8 @@ All the features will be centered and scaled. The target variable will be left
 in normal space. This will make prediction easier.
 
 ```{r model2C+S}
+##### Model 2: Pairwise Model
+# cleaning data for model 2
 ts2 <- train_set[, -(17:19)]
 ts2 <- data.frame(apply(ts2, 2, scale))
 ts2$TARGET_WINS <- train_set$TARGET_WINS
@@ -729,6 +771,8 @@ Once again, Cook's distance is use to decide if an individual entity is an extre
 value or not.
 
 ```{r model3}
+
+##### Model 3: K-fold Model
 stepdata <- subset(train_set, select = -c(AB, SLG, TEAM_BATTING_HBP))
 stepdata <- cbind(stepdata, sapply(stepdata[2:length(stepdata)], function(x) x^2))
 names(stepdata) <- make.unique(names(stepdata), sep = "_")
@@ -772,7 +816,7 @@ with strikeouts but it will also increase the chances of hitting home runs (even
 1B, 2B, 3B), and that is pretty good exchange that most teams are willing carry
 out.
 
-# MODEL SELECTION
+# SELECT MODELS
 ## Criteria
 In order to select the best model to make predictions, we looked at the
 following goodness of fit metrics:
@@ -790,6 +834,7 @@ following goodness of fit metrics:
 
 ## Performance
 ```{r performance}
+##################### SELECT MODELS
 # Model accuracy
 results <- data.frame(
   Models = c("Model #1: Backwards" , "Model #2: Pairwise", "Model #3: K-fold"),
@@ -803,15 +848,36 @@ results %>% knitr::kable(digits = 3L,
                          caption = 'Performance Statistics & Error Measure of Models')
 ```
 
+
+```{r errors}
+
+# calculate predictions for each model 
+mod1_preds <- data.frame(cbind(train_df2$TARGET_WINS, round(mod_sum1$residuals,0), train_df2$TARGET_WINS + round(mod_sum1$residuals,0) ))
+colnames(mod1_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
+
+mod2_preds <- data.frame(cbind(ts2$TARGET_WINS, round(sstm$residuals,0), ts2$TARGET_WINS + round(sstm$residuals,0) ))
+colnames(mod2_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
+
+mod3_preds <- data.frame(cbind(stepdata.2$TARGET_WINS, round(mod_sum3$residuals,0), stepdata.2$TARGET_WINS + round(mod_sum3$residuals,0) ))
+colnames(mod3_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
+
+
+# summary statistics for residuals
+resid_stats <- data.frame(rbind(summary(mod1_preds$RESIDUAL), summary(mod2_preds$RESIDUAL), summary(mod3_preds$RESIDUAL)))
+
+resid_stats$Models <- c('Model #1: Backwards' , 'Model #2: Pairwise', 'Model #3: K-fold')
+
+```
+
 It was interesting to compare the three models given that their performance
-statistics and error measurements were not significantly different from each other.
-**Model #2: Pairwise** was the worst performing model for all of our metrics, and
-was eliminated immediately. **Model #3: K-fold** accounts for nearly 45% of the
-variation in the dependent variable with the independent variables because its
-\(R^2\) is 0.456 and its adjusted \(R^2\) is = 0.450, both of which are
-acceptable for a good model. However, **Model #1: Backwards** has the smallest
-RSME of all the models. RMSE is a measure of how far off predictions are from
-the actual, giving extra weight to outliers through summing the squared
+statistics, error measurements, and residual distributions were not drastically 
+different from each other. **Model #2: Pairwise** was the worst performing model 
+for all of our metrics, and was eliminated immediately. **Model #3: K-fold** accounts 
+for nearly 45% of the variation in the dependent variable with the independent 
+variables because its \(R^2\) is 0.456 and its adjusted \(R^2\) is = 0.450, both of 
+which are acceptable for a good model. However, **Model #1: Backwards** has the 
+smallest RSME of all the models. RMSE is a measure of how far off predictions are 
+from the actual, giving extra weight to outliers through summing the squared
 differences. This demonstrates a greater reduction in the randomness by
 **Model #1: Backwards**. But its difference from **Model #3: K-fold** is only
 0.022. It is hard to judge if that is a significant difference. We thus also
@@ -823,6 +889,7 @@ effectively no support for the model with the larger AIC
 (Section 2.6, Burnham & Anderson 2002). As a result, **Model #1: Backwards**
 is our selected model.
 
+
 ## Discussion
 This is an interesting model in that given no other information, a team would be
 expected to win negative games, which is clearly impossible. That being said, it
@@ -832,12 +899,13 @@ target wins. This engineered feature contains within it numerous interactions.
 It combines scaled versions of some features and normalizes them for the
 combination of other features. Perhaps that is why it is so significant.
 
-# PREDICTIONS
+## Predictions
 **Model #1: Backwards** was used to predict the target wins base on the
 evaluation set, once processed similarly to the training data. As the number of
 games won must be integral, the values were rounded to the closest integer.
 
 ```{r eval_set, eval=FALSE}
+# predict target wins
 eval_set = eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
   bind_cols(eval_set) %>%
@@ -877,7 +945,10 @@ names(test_df3) = make.unique(names(test_df3), sep = "_")
 ```
 
 ```{r predictions}
-eval_set <- paste0(urlRemote, pathGithub, fileEval) %>% read.csv()
+
+############# predict target wins
+
+# outlier removal - TEAM_PITCHING_SO
 eval_set <- eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
   bind_cols(eval_set) %>%
@@ -887,6 +958,7 @@ eval_set <- eval_set %>% na.omit() %>%
          + 1.5 * iqr) %>%
   dplyr::select(-iqr)
 
+# outlier removal - TEAM_PITCHING_H
 eval_set <- eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_H)) %>%
   bind_cols(eval_set) %>%
@@ -896,8 +968,10 @@ eval_set <- eval_set %>% na.omit() %>%
          + 1.5 * iqr) %>%
   dplyr::select(-iqr)
 
+# mice imputation
 eval_set <- complete(mice(data = eval_set, method = "pmm", seed = 9450, print=FALSE), 3)
 
+# feature engineering
 eval_set <- eval_set %>% dplyr::select(-INDEX) %>%
   mutate_if(is.integer, as.numeric) %>%
   mutate(TEAM_BATTING_1B = TEAM_BATTING_H - (TEAM_BATTING_2B + TEAM_BATTING_3B +
@@ -906,6 +980,8 @@ eval_set <- eval_set %>%
   mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
          SLG = (TEAM_BATTING_1B + 2 * TEAM_BATTING_2B + 3 * TEAM_BATTING_3B +
                   4 * TEAM_BATTING_HR) / AB)
+
+# final predictions
 predictions <- round(predict(lm_1, newdata = eval_set))
 summary(predictions)
 predictions
