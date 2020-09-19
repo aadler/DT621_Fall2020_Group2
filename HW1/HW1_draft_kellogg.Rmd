@@ -807,17 +807,29 @@ mod_sum3[["coefficients"]] %>%
                caption = 'K-fold Step Model with Higher Order Polynomials Output')
 ```
 
-Studying the coefficients of the model suggest that winning is in favor if the
-team batting hits more doubles, triples and home runs. Moreover, increase in the
-number of stolen bases, and a decrease in caught steals, double plays, error,
-and walks allowed would all lead to a win for the batting team. It is noteworthy
-that the model suggests that a decrease in single hits by batter and an increase
-in strikeouts by batters which seems counter intuitive. But these variables were
-kept because when a batter steps to the plate, the player is more likely to
-strike out than to get a hit. Trying to hit the ball out of the park will come
-with strikeouts but it will also increase the chances of hitting home runs (even
-1B, 2B, 3B), and that is pretty good exchange that most teams are willing carry
-out.
+From studying each coefficient, this discussion begins with the variables that follow 
+the logic of winning and are self-evident. Firstly, the model suggests that winning is 
+in favor of the team batting hits more bases, (1B, 2B, 3B, HR). It further reveals that 
+an increase in singles would lead to better chances of winning. A hit is a hit, and more 
+hits than the opponent will inevitably lead to a win. Likewise, an increase in walks by 
+the batting team is awarded first base, further increasing base counts and, thus the 
+chances of winning. In terms of the base run, an increase in the number of stolen bases, 
+and a decrease in caught steals would lead to a win for the batting team. These variables 
+have a positive effect on the number of wins, and it is understandable as to why.
+
+When interpreting the model based on the pitching team's plays, it is perceptible that 
+walks allowed should be reduced so that the batting team hits does not increase. Moreover, 
+preventing errors and increasing double plays in which two players are put out will also 
+increase the chances of winning.
+
+On the other hand, it is noteworthy that the model suggests some counter-intuitive play 
+strategies. Firstly, when all variables are null, the intercept predicts that a team would 
+win, with a target win of 129. Moreover, the model suggests that a decrease in double hits 
+and an increase in strikeouts by the batting team will improve winning. These variables 
+were kept because when a batter steps to the plate, the player is more likely to strike 
+out than to get a hit. Trying to hit the ball out of the park will come with strikeouts 
+but it will also increase the chances of hitting home runs (even 1B, 2B, 3B), and that is 
+a pretty good exchange that most teams are willing to perform.
 
 # SELECT MODELS
 ## Criteria
