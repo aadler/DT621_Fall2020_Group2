@@ -864,28 +864,27 @@ results %>% knitr::kable(digits = 3L,
 It was interesting to compare the three models given that their performance
 statistics, error measurements, and residual distributions were not drastically 
 different from each other. **Model #2: Pairwise** was the worst performing model 
-for all of our metrics, and was eliminated immediately. **Model #3: K-fold** accounts 
-for nearly 45% of the variation in the dependent variable with the independent 
-variables because its \(R^2\) is 0.456 and its adjusted \(R^2\) is = 0.450, both of 
-which are acceptable for a good model. However, **Model #1: Backwards** has the 
-smallest RSME of all the models. RMSE is a measure of how far off predictions are 
-from the actual, giving extra weight to outliers through summing the squared
-differences. This demonstrates a greater reduction in the randomness by
-**Model #1: Backwards**. But its difference from **Model #3: K-fold** is only
-0.022. It is hard to judge if that is a significant difference. We thus also
-considered AIC. With AIC, it is not the magnitude of the value which is
-important, but the difference between the various model AIC's. The magnitude is
-a function of the number of observations. Accepted rules of thumb in the
-statistical literature are that if the difference is greater than 10, there is
-effectively no support for the model with the larger AIC
-(Section 2.6, Burnham & Anderson 2002). As a result, **Model #1: Backwards**
-is our selected model.
-
+for all of our metrics, and was eliminated immediately. **Model #3: K-fold**
+accounts for nearly 45% of the variation in the dependent variable with the
+independent variables because its \(R^2\) is 0.456 and its adjusted \(R^2\) is
+0.450, both of which are acceptable for a good model. However,
+**Model #1: Backwards** has the smallest RSME of all the models. RMSE is a
+measure of how far off predictions are from the actual, giving extra weight to
+outliers through summing the squared differences. This demonstrates a greater
+reduction in the randomness by **Model #1: Backwards**. But its difference from
+**Model #3: K-fold** is only 0.022. It is hard to judge if that is a significant
+difference. We thus also considered AIC. With AIC, it is not the magnitude of
+the value which is important, but the difference between the various model
+AIC's. The magnitude is a function of the number of observations. Accepted rules
+of thumb in the statistical literature are that if the difference is greater
+than 10, there is effectively no support for the model with the larger AIC
+(Section 2.6, Burnham & Anderson 2002). As a result, **Model #1: Backwards** is
+our selected model.
 
 ## Discussion
 This is an interesting model in that given no other information, a team would be
 expected to win negative games, which is clearly impossible. That being said, it
-is an indication of the predictive power of the engineereed **slugging** feature
+is an indication of the predictive power of the engineered **slugging** feature
 that allows small increments in slugging to result in significant shifts in
 target wins. This engineered feature contains within it numerous interactions.
 It combines scaled versions of some features and normalizes them for the
@@ -897,7 +896,7 @@ evaluation set, once processed similarly to the training data. As the number of
 games won must be integral, the values were rounded to the closest integer.
 
 ```{r eval_set, eval=FALSE}
-# predict target wins
+# Predict target wins
 eval_set = eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
   bind_cols(eval_set) %>%
@@ -937,9 +936,7 @@ names(test_df3) = make.unique(names(test_df3), sep = "_")
 ```
 
 ```{r predictions}
-
-############# predict target wins
-
+# Predict target wins
 # outlier removal - TEAM_PITCHING_SO
 eval_set <- eval_set %>% na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
