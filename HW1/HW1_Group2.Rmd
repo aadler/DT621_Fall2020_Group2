@@ -895,46 +895,6 @@ combination of other features. Perhaps that is why it is so significant.
 evaluation set, once processed similarly to the training data. As the number of
 games won must be integral, the values were rounded to the closest integer.
 
-```{r eval_set, eval=FALSE}
-# Predict target wins
-eval_set = eval_set %>% na.omit() %>%
-  summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
-  bind_cols(eval_set) %>%
-  filter(TEAM_PITCHING_SO > quantile(TEAM_PITCHING_SO, probs = c(0.25), na.rm = TRUE) 
-         - 1.5 * iqr, 
-         TEAM_PITCHING_SO < quantile(TEAM_PITCHING_SO, probs = c(0.75), na.rm = TRUE) 
-         + 1.5 * iqr) %>%
-  dplyr::select(-iqr)
-
-eval_set = eval_set %>% na.omit() %>%
-  summarise(iqr = IQR(TEAM_PITCHING_H)) %>%
-  bind_cols(eval_set) %>%
-  filter(TEAM_PITCHING_H > quantile(TEAM_PITCHING_H, probs = c(0.25), na.rm = TRUE) 
-         - 1.5 * iqr,
-         TEAM_PITCHING_H < quantile(TEAM_PITCHING_H, probs = c(0.75), na.rm = TRUE) 
-         + 1.5 * iqr) %>%
-  dplyr::select(-iqr)
-
-eval_set = complete(mice(data = eval_set, method = "pmm", seed = 9450,  print=FALSE), 3)
-
-eval_set = eval_set %>% dplyr::select(-INDEX) %>%
-  mutate_if(is.integer, as.numeric) %>%
-  mutate(TEAM_BATTING_1B = TEAM_BATTING_H - (TEAM_BATTING_2B + TEAM_BATTING_3B +
-                                               TEAM_BATTING_HR))
-
-# Cleaning Test Set for Model #1
-test_df1 = eval_set %>%
-  mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
-         SLG = (TEAM_BATTING_1B + 2 * TEAM_BATTING_2B + 3 * TEAM_BATTING_3B +
-                  4 * TEAM_BATTING_HR) / AB)
-# Cleaning Test Set for Model #2
-test_df2 = test_df1[, -(17:19)]
-test_df2 = data.frame(apply(test_df2, 2, scale))
-# Cleaning Test Set for Model #3
-test_df3 = cbind(test_df1, sapply(test_df1[1:length(test_df1)], function(x) x^2))
-names(test_df3) = make.unique(names(test_df3), sep = "_")
-```
-
 ```{r predictions}
 # Predict target wins
 # outlier removal - TEAM_PITCHING_SO
@@ -1038,7 +998,5 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r performance}
 ```
-<!--```{r eval_set}
-```-->
 ```{r predictions}
 ```
