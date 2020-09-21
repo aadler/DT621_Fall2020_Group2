@@ -847,7 +847,7 @@ following goodness of fit metrics:
 
 ## Performance
 ```{r performance}
-##################### SELECT MODELS
+# SELECT MODELS
 # Model accuracy
 results <- data.frame(
   Models = c("Model #1: Backwards" , "Model #2: Pairwise", "Model #3: K-fold"),
@@ -859,27 +859,6 @@ results <- data.frame(
   AIC = c(AIC(lm_1), AIC(stepModel), AIC(step.model)))
 results %>% knitr::kable(digits = 3L, 
                          caption = 'Performance Statistics & Error Measure of Models')
-```
-
-
-```{r errors}
-
-# calculate predictions for each model 
-mod1_preds <- data.frame(cbind(train_df2$TARGET_WINS, round(mod_sum1$residuals,0), train_df2$TARGET_WINS + round(mod_sum1$residuals,0) ))
-colnames(mod1_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
-
-mod2_preds <- data.frame(cbind(ts2$TARGET_WINS, round(sstm$residuals,0), ts2$TARGET_WINS + round(sstm$residuals,0) ))
-colnames(mod2_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
-
-mod3_preds <- data.frame(cbind(stepdata.2$TARGET_WINS, round(mod_sum3$residuals,0), stepdata.2$TARGET_WINS + round(mod_sum3$residuals,0) ))
-colnames(mod3_preds) <- c('TARGET_WINS', 'RESIDUAL', 'PREDICTED')
-
-
-# summary statistics for residuals
-resid_stats <- data.frame(rbind(summary(mod1_preds$RESIDUAL), summary(mod2_preds$RESIDUAL), summary(mod3_preds$RESIDUAL)))
-
-resid_stats$Models <- c('Model #1: Backwards' , 'Model #2: Pairwise', 'Model #3: K-fold')
-
 ```
 
 It was interesting to compare the three models given that their performance
