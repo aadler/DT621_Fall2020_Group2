@@ -590,13 +590,13 @@ information about any of the statistics, we would predict that a team would lose
 all of its games, and then some! 
 
 Next, fielding double plays and batting doubles both appear to have negative
-impacts on wins even though they *should* be positive impacts. Turning double plays,
-while a good for the defensive team, may suggest a larger, negative issue.
-Namely, weak pitching that leads to runners on base. Similarly, batting doubles,
-leaves runners open to double plays. Allowed hits by pitching, caught stealing,
-and batting strike-outs are all counter intuitive results as well, but they seem
-to be small contributors and these are events that happen regularly in every
-game. 
+impacts on wins even though they *should* be positive impacts. Turning double
+plays, while a good for the defensive team, may suggest a larger, negative
+issue. Namely, weak pitching that leads to runners on base. Similarly, batting
+doubles, leaves runners open to double plays. Allowed hits by pitching, caught
+stealing, and batting strike-outs are all counter intuitive results as well, but
+they seem to be small contributors and these are events that happen regularly in
+every game. 
 
 Slugging as an approximation is the major predictor in this regression, by far.
 The other predictors other than the intercept are orders of magnitude less in
@@ -613,8 +613,8 @@ All the features will be centered and scaled. The target variable will be left
 in normal space. This will make prediction easier.
 
 ```{r model2C+S}
-##### Model 2: Pairwise Model
-# cleaning data for model 2
+# Model 2: Pairwise Model
+# Cleaning data for model 2
 ts2 <- train_set[, -(17:19)]
 ts2 <- data.frame(apply(ts2, 2, scale))
 ts2$TARGET_WINS <- train_set$TARGET_WINS
@@ -763,19 +763,21 @@ on different subset of the training data and then calculate the average
 prediction error rate.
 
 ### Further data transformation
-Once again, Cook's distance is use to decide if an individual entity is an extreme 
-value or not.
+Once again, Cook's distance is use to decide if an individual entity is an
+extreme value or not.
 
 ```{r model3}
-
-##### Model 3: K-fold Model
+# Model 3: K-fold Model
 stepdata <- subset(train_set, select = -c(AB, SLG, TEAM_BATTING_HBP))
-stepdata <- cbind(stepdata, sapply(stepdata[2:length(stepdata)], function(x) x^2))
+stepdata <- cbind(stepdata,
+                  sapply(stepdata[2:length(stepdata)], function(x) x^2))
 names(stepdata) <- make.unique(names(stepdata), sep = "_")
 model <- lm(TARGET_WINS ~ ., data = stepdata)
 cooksd <- cooks.distance(model)
-influential <- as.numeric(names(cooksd)[(cooksd > 4*mean(cooksd, na.rm = TRUE))])
+influential <- as.numeric(
+  names(cooksd)[(cooksd > 4 * mean(cooksd, na.rm = TRUE))])
 stepdata.2 <- stepdata[-c(influential), ]
+
 # Set up repeated k-fold cross-validation
 set.seed(525)
 train.control <- trainControl(method = "cv", number = 10)
@@ -783,12 +785,13 @@ train.control <- trainControl(method = "cv", number = 10)
 step.model <- train(TARGET_WINS ~ ., data = stepdata.2, method = "lmStepAIC", 
                    trControl = train.control, trace = FALSE)
 # Final model 
-step.model <- lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_2B + TEAM_BASERUN_SB + 
-                  TEAM_BASERUN_CS + TEAM_PITCHING_H + TEAM_PITCHING_HR + TEAM_FIELDING_E + 
-                  TEAM_FIELDING_DP + TEAM_BATTING_BB_1 + TEAM_BATTING_SO_1 + 
-                  TEAM_BASERUN_CS_1 + TEAM_PITCHING_H_1 + TEAM_PITCHING_BB_1 + 
-                  TEAM_FIELDING_E_1 + TEAM_FIELDING_DP_1 + TEAM_BATTING_1B_1, 
-                data = stepdata.2)
+step.model <- lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_2B +
+                   TEAM_BASERUN_SB + TEAM_BASERUN_CS + TEAM_PITCHING_H +
+                   TEAM_PITCHING_HR + TEAM_FIELDING_E +  TEAM_FIELDING_DP +
+                   TEAM_BATTING_BB_1 + TEAM_BATTING_SO_1 +  TEAM_BASERUN_CS_1 +
+                   TEAM_PITCHING_H_1 + TEAM_PITCHING_BB_1 +  TEAM_FIELDING_E_1 +
+                   TEAM_FIELDING_DP_1 + TEAM_BATTING_1B_1, data = stepdata.2)
+
 # Summary of the model
 mod_sum3 <- summary(step.model)
 ```
@@ -800,29 +803,31 @@ mod_sum3[["coefficients"]] %>%
                caption = 'K-fold Step Model with Higher Order Polynomials Output')
 ```
 
-From studying each coefficient, this discussion begins with the variables that follow 
-the logic of winning and are self-evident. Firstly, the model suggests that winning is 
-in favor of the team batting hits more bases, (1B, 2B, 3B, HR). It further reveals that 
-an increase in singles would lead to better chances of winning. A hit is a hit, and more 
-hits than the opponent will inevitably lead to a win. Likewise, an increase in walks by 
-the batting team is awarded first base, further increasing base counts and, thus the 
-chances of winning. In terms of the base run, an increase in the number of stolen bases, 
-and a decrease in caught steals would lead to a win for the batting team. These variables 
-have a positive effect on the number of wins, and it is understandable as to why.
+This discussion begins with the variables that follow the logic of winning and
+are self-evident. Firstly, the model suggests that winning is in favor of the
+team which when batting has more total bases, (1B, 2B, 3B, HR). It further
+reveals that an increase in singles would lead to better chances of winning. A
+hit is a hit, and more hits than the opponent will inevitably lead to a win.
+Likewise, an increase in walks by the batting team is awarded first base,
+further increasing base counts and, thus the chances of winning. In terms of the
+base run, an increase in the number of stolen bases, and a decrease in caught
+steals would lead to a win for the batting team. These variables have a positive
+effect on the number of wins, and it is understandable as to why.
 
-When interpreting the model based on the pitching team's plays, it is perceptible that 
-walks allowed should be reduced so that the batting team hits does not increase. Moreover, 
-preventing errors and increasing double plays in which two players are put out will also 
-increase the chances of winning.
+When interpreting the model based on the pitching team's plays, it is
+perceptible that walks allowed should be reduced so that the batting team hits
+does not increase. Moreover, preventing errors and increasing double plays in
+which two players are put out will also increase the chances of winning.
 
-On the other hand, it is noteworthy that the model suggests some counter-intuitive play 
-strategies. Firstly, when all variables are null, the intercept predicts that a team would 
-win, with a target win of 129. Moreover, the model suggests that a decrease in double hits 
-and an increase in strikeouts by the batting team will improve winning. These variables 
-were kept because when a batter steps to the plate, the player is more likely to strike 
-out than to get a hit. Trying to hit the ball out of the park will come with strikeouts 
-but it will also increase the chances of hitting home runs (even 1B, 2B, 3B), and that is 
-a pretty good exchange that most teams are willing to perform.
+On the other hand, it is noteworthy that the model suggests some
+counter-intuitive play strategies. Firstly, when all variables are null, the
+intercept predicts that a team would win, with a target win of 129. Moreover,
+the model suggests that a decrease in double hits and an increase in strikeouts
+by the batting team will improve winning. These variables were kept because when
+a batter steps to the plate, the player is more likely to strike out than to get
+a hit. Trying to hit the ball out of the park will come with strikeouts but it
+will also increase the chances of hitting home runs (even 1B, 2B, 3B), and that
+is a pretty good exchange that most teams are willing to perform.
 
 # SELECT MODELS
 ## Criteria
