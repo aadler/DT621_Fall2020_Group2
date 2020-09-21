@@ -1,0 +1,120 @@
+---
+title: "Blog Post 3: Training & Testing: Other Models"
+subtitle: "DT 621---Fall 2020"
+author: "Avraham Adler"
+date: "9/21/2020"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, error=FALSE)
+```
+
+# Training and Testing with Hyperparameters
+We saw in the [previous blog post](https://rpubs.com/Avraham/DT621Blog2) that
+splitting data into training and testing sets in and of itself can be valuable
+to prevent overfitting. In this post, we will demonstrate how it can help with
+hyperparameter tuning and model selection.
+
+We will train two sets of models. The first will train on the entire available
+data set and the best performing model will be selected. The second set will
+train on the "train" portion of the dataset, and the model which performs best
+on the "test" portion of the dataset will be selected. The two selected models
+will go head-to-head on the unobserved "future" data. The decision metric will
+be RMSE.
+
+This is not the best example as it is so simple, but it should suffice.
+
+```{r loadPackages}
+library(caret)
+trc <- trainControl(method = 'cv', number = 10)
+```
+```{r createData}
+set.seed(245)
+x1 <- runif(400, 0, 100)
+x2 <- rnorm(400, 0, 10)
+x3 <- rexp(400, 1/5)
+y <- 3.2 + 1.6 * x1 + 3.4 * x2 - 0.8 * x3 + rnorm(400, 0, 10)
+futIDX <- sample(400, 100)
+x1f <- x1[futIDX]
+x1p <- x1[-futIDX]
+x2f <- x2[futIDX]
+x2p <- x2[-futIDX]
+x3f <- x3[futIDX]
+x3p <- x3[-futIDX]
+yf <- y[futIDX]
+yp <- y[-futIDX]
+testIDX <- sample(300, 300 * 0.25)
+x1trn <- x1p[-testIDX]
+x1tst <- x1p[testIDX]
+x2trn <- x2p[-testIDX]
+x2tst <- x2p[testIDX]
+x3trn <- x3p[-testIDX]
+x3tst <- x3p[testIDX]
+ytrn <- yp[-testIDX]
+ytst <- yp[testIDX]
+```
+
+# Model Training
+For a serious project, one-pass tuning would be insufficient. The results of
+each run would be used to fine-tune the parameters.
+
+## Random Forest
+```{r rfFit}
+set.seed(245)
+rf1 <- train(data.frame(x1 = x1p, x2 = x2p, x3 = x3p), yp, method = 'ranger',
+            trControl = trc, tuneLength = 2L)
+rf2 <- train(data.frame(x1 = x1trn, x2 = x2trn, x3 = x3trn), ytrn,
+            method = 'ranger', tuneLength = 2L)
+plot(rf1)
+plot(rf2)
+```
+
+## Support Vector Machines
+```{r svmFit}
+tgrid <- expand.grid(list(C = seq(0.01, 1, 0.01)))
+set.seed(245)
+sv1 <- train(data.frame(x1 = x1p, x2 = x2p, x3 = x3p), yp, method = 'svmLinear',
+            trControl = trc, tuneGrid = tgrid)
+sv2 <- train(data.frame(x1 = x1trn, x2 = x2trn, x3 = x3trn), ytrn,
+             method = 'svmLinear', trControl = trc, tuneGrid = tgrid)
+plot(sv1)
+plot(sv2)
+```
+
+# Model Selection
+## Models Trained on All the Data
+```{r MS1}
+min(rf1$results$RMSE)
+min(sv1$results$RMSE)
+```
+
+## Using Testing Set
+```{r MS2}
+rf2p <- predict(rf2, data.frame(x1 = x1tst, x2 = x2tst, x3 = x3tst))
+sv2p <- predict(sv2, data.frame(x1 = x1tst, x2 = x2tst, x3 = x3tst))
+RMSE(rf2p, ytst)
+RMSE(sv2p, ytst)
+```
+
+## Model Testing
+In both cases the support vector machine outperformed the random forest. This is
+almost assuredly due to the truth being a linear model. In a more complicated
+case, one may see something different.
+
+```{r Test}
+sv1p <- predict(sv1, data.frame(x1 = x1f, x2 = x2f, x3 = x3f))
+sv2p <- predict(sv2, data.frame(x1 = x1f, x2 = x2f, x3 = x3f))
+defaultSummary(data.frame(pred = sv1p, obs = yf))
+defaultSummary(data.frame(pred = sv2p, obs = yf))
+```
+
+The second model, fit on less data, has better accuracy on the "future" data.
+This is also a demonstration of robsutness against overfitting.
+
+Once again, being that there was a simple linear model underlying truth, the SVM
+dominated. A benfit of using train/testing sets allows models of very different
+structure to be compared across more difficult problems. Splitting the data into
+two sets allows for the holdout set to act as the unknown future.
