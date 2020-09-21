@@ -11,13 +11,12 @@ output:
   html_document: default
 ---
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 
 ```{r loadData, include=FALSE}
-##################### libraries and variables 
+# Libraries and variables 
 library(tidyverse)
 library(ggplot2)
 library(corrplot)
@@ -28,12 +27,11 @@ library(Hmisc)
 library(MASS)
 library(dplyr)
 library(caret)
-library(data.table)
 
 urlRemote  = "https://raw.githubusercontent.com/"
 pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
 fileTrain   = "moneyball-training-data.csv"
-train_set = paste0(urlRemote, pathGithub, fileTrain) %>% read.csv()
+train_set = read.csv(paste0(urlRemote, pathGithub, fileTrain))
 
 fileEval   = "moneyball-evaluation-data.csv"
 eval_set = paste0(urlRemote, pathGithub, fileEval) %>% read.csv()
@@ -43,19 +41,20 @@ set.seed(9450)
 
 # DATA EXPLORATION
 ## How Often Does The Team Win?
-We are given a data set of 2,276 records containing 15 seasonal statistics and
-the total number of wins a team had in a given year. On average, about 50% of
-games played are won (81 games out of 162), with the best individual season
-having 146 wins and the worst season having 0 wins. The data is normally
-distributed and most years have between 49 and 112 wins (blue lines below). The
-nature of the distribution means there aren't too many extreme seasons where
-wins are significantly higher or lower than usual. This serves as a good
-gut-check for our final predictions; if the predicted wins are too high or too 
-low, we know something in our model is probably off. 
+The data set provided comprises 2,276 records of baseball teams seasons. There
+are 15 features, statistics corresponding to a team's performance in a season,
+and a target variable of the team's number of wins in that season. A baseball
+season contains 162 games. On average, about 50% of games played are won---81
+games out of 162---with the best individual season having 146 wins and the worst
+season having 0 wins. The data is near normally distributed and most years have
+between 49 and 112 wins, represented by the blue lines in the histogram below.
+The nature of the distribution indicates that there aren't too many extreme
+seasons where wins are significantly higher or lower than usual. This serves as
+a good gut-check for our final predictions; if the predicted wins are too high
+or too low, we know something in our model is probably off. 
 
 ```{r wins, fig.height = 2.5, fig.width = 5, fig.align = 'center'}
-##################### DATA EXPLORATION
-
+# DATA EXPLORATION
 avgWins <- mean(train_set$TARGET_WINS)
 sdev <- sd(train_set$TARGET_WINS)
 l1 <- mean(train_set$TARGET_WINS) - (2 * sdev)
@@ -85,11 +84,10 @@ from a few of the models we propose. The other two stats have less than half of
 the data missing, so we'll need to think of a clever way to fill in these
 values. The remaining missing information is from a combination of stolen bases
 and strikeouts by pitchers and batters (`TEAM_BASERUN_SB`, `TEAM_PITCHING_SO`,
-`TEAM_BATTING_SO`). **It seems completely unreasonable** to have zero strike
+`TEAM_BATTING_SO`). It seems **completely unreasonable** to have zero strike
 outs in a season, so this is something we'll most certainly have to impute. 
 
 ```{r pctNull, fig.height = 2, fig.width = 5, fig.align = 'center'}
-
 # percent null for each variable
 pct_null <- data.frame(do.call("rbind", map(train_set %>% dplyr::select(-INDEX),
                                             ~ mean(is.na(.)))))
@@ -115,7 +113,7 @@ Walks Allowed would all have a **negative** impact on the total wins. In other
 words, as these values increase, we expect that the team is less likely to win.  
 
 ```{r negFactors, fig.align = 'center'}
-# variables expected to have a negative impact on wins
+# Variables expected to have a negative impact on wins
 negSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Errors' = TEAM_FIELDING_E, 
@@ -147,7 +145,7 @@ Doubles, Triples, Home Runs, Walks, Batters getting hit by pitches, Stolen
 Bases, Double Plays, and Strikeouts by Pitchers.  
   
 ```{r posFactors, fig.align = 'center'}
-# variables expected to have a positive impact on wins
+# Variables expected to have a positive impact on wins
 posSet <- train_set %>%
   dplyr::select(TARGET_WINS, 
          'Base hits' = TEAM_BATTING_H, 
@@ -167,29 +165,28 @@ ggplot(data = posSet %>%
        y = "Number of Wins") + facet_wrap(~ STAT, scales = "free")
 ```
 
-Many of these stats *do* seem to have an effect on the number of wins, most
+Many of these stats *do* seem to have an effect on the number of wins; most
 notably, **Base Hits** and **Walks**. We see weaker positive relationships for
-**Home Runs**, **Doubles**, **Triples**, and **Stolen Bases**. This makes sense
-when we think about it; these things tend to happen less often in games than
-pure base hits and walks, so they don't have as much of an effect on winning.
-Finally, **Double Plays** and **Batters Hit** don't appear to have any
-correlation with the number of wins. Once again, this intuitively makes sense
-because they are less likely to happen in a game. 
+**Home Runs**, **Doubles**, **Triples**, and **Stolen Bases**. On the surface,
+this makes sense as these events tend to happen less often in games than base
+hits and walks, so they don't have as much of an effect on winning. Finally,
+**Double Plays** and **Batters Hit** don't appear to have any correlation with
+the number of wins. Once again, this intuitively makes sense because they are
+less likely to happen in a game. 
   
 One thing to note is the number of strikeouts compared to the number of wins. We
-can see that there are a few outliers (abnormally high numbers of strikeouts in
-a season). This should be taken with caution, as they don't represent a typical
+can see that there are a few outliers---abnormally high numbers of strikeouts in
+a season. This should be taken with caution, as they don't represent a typical
 season's stats. 
 
 ## Are Some Stats More Skewed Than Others?
 Before using any of the statistics in a model, we need to take a closer look at
-the variation in the data. We call out-of-the-ordinary values (exceptionally
-high or low values) **outliers**. We need to take these into account in our
-modeling because we want to make sure our predictions aren't skewed because of
-them.
+the variation in the data. We call out-of-the-ordinary values, exceptionally
+high or low values, **outliers**. We need to take these into account in our
+modeling to prevent them from skewing our predictions.
 
 ```{r summaryInfo, fig.height = 3, fig.width = 5, fig.align = 'center'}
-# understanding outliers by variable
+# Understanding outliers by variable
 totalOutliers <- data.frame(
   sapply(train_set %>% dplyr::select(-INDEX, -TARGET_WINS, - TEAM_BATTING_HBP), 
        function(x){length(boxplot.stats(x)$out)/nrow(train_set)}))
@@ -205,12 +202,12 @@ ggplot(totalOutliers,
 ```
 
 As we can see, some of the provided statistics are well-balanced in the sense
-that there are very *few* (or no) extreme values. **Home Runs allowed**
+that there are very *few*, or no, extreme values. **Home Runs allowed**
 (`TEAM_PITCHING_HR`), **Strikeouts by batters** (`TEAM_BATTING_SO`), and
 **Home Runs by batters** (`TEAM_BATTING_HR`) are some examples.
 
 ```{r fewOutliers, fig.height = 2, fig.width = 6, fig.align = 'center'}
-# distributions of variables with few outliers
+# Distributions of variables with few outliers
 set1 <- train_set %>%
   dplyr::select('Home Runs by batters' = TEAM_BATTING_HR, 
          'Strikeouts by batters' = TEAM_BATTING_SO,  
@@ -226,8 +223,8 @@ vals
 Some things to note about each of these statistics:
 
   * **Home Runs Allowed** (average ~100/year) and **Home Runs by Batters**
-  (average ~106/year) have a very similar mid-range distribution (50% of the
-  data lies between ~50 and 150). The slight difference in average stats means
+  (average ~106/year) have a very similar mid-range distribution---50% of the
+  data lies between ~50 and 150. The slight difference in average stats means
   that teams tend to have a higher number of Home Runs than the opposition team.
   * The only thing that stands out about **Strikeouts by Batters** (average
   ~736/year) is how nearly perfectly normal it is. 50% of the data is between
@@ -240,7 +237,7 @@ that there are some seasons with some abnormally high or low values. **Errors**
 (`TEAM_BATTING_BB`), and **Stolen bases** (`TEAM_BASERUN_SB`) are some examples. 
 
 ```{r manyOutliers, fig.height = 2, fig.width = 6, fig.align = 'center'}
-# distributions of variables with many outliers
+# Distributions of variables with many outliers
 set2 <-  train_set %>%
   dplyr::select('Walks by batters' = TEAM_BATTING_BB, 
          'Stolen bases' = TEAM_BASERUN_SB,  
@@ -279,7 +276,7 @@ The remaining stats, **Walks Allowed** (`TEAM_PITCHING_BB`),
 29 and 99 outliers. 
 
 ```{r otherOutliers, fig.height = 3.5, fig.width = 7, fig.align = 'center'}
-# distribution of all other variables 
+# Distribution of all other variables 
 set3 <-  train_set %>%
   dplyr::select('Base Hits by batters' = TEAM_BATTING_H, 
          'Doubles by batters' = TEAM_BATTING_2B,  
@@ -309,13 +306,12 @@ Some things to note:
   at all surprising, but serves as a good gut check on the validity of the data. 
 
 ## Are Stats Correlated?
-We would expect that a few things in the dataset might be correlated: perhaps
+We would expect that a few things in the dataset might be correlated. Perhaps
 number of errors and hits/homeruns allowed or the number of base hits by batters
 and doubles/triples/homeruns. We can visualize the correlations between the
-statistics to determine if there is a significant relationship between the them:
-blue dots represent positively correlated variables (as one increases, so does
-the other) and red dots represent negatively correlated variables (as one
-increases, the other decreases).
+statistics to determine if there is a significant relationship between the them.
+In the graph below, blue dots represent positively correlated variables and red
+dots represent negatively correlated variables.
 
 ```{r corrPlot, fig.align = 'center'}
 # Correlation matrix with significance levels (p-value)
@@ -359,10 +355,7 @@ outlier is evaluated to ensure:
 We can take another look at the outliers for each variable: 
 
 ```{r outliers_1, fig.height = 4, fig.width = 8, fig.align = 'center'}
-
-##################### DATA PREPARATION
-
-# visualizing variables pre outlier removal
+# Visualizing variables prior to outlier removal
 train_set %>%
   dplyr::select(-TARGET_WINS, -INDEX) %>%
   pivot_longer(everything(), 
@@ -379,8 +372,8 @@ variables: `TEAM_PITCHING_SO` and `TEAM_PITCHING_H.`
 
   * **TEAM_PITCHING_SO**: The largest outlier is close to 20,000, which averages
   ~123 strikeouts per game. This is only possible if every one of the 162 games
-  went approximately 40 innings, and each out was a strikeout---which clearly has
-  never happened.
+  went approximately 40 innings, and each out was a strikeout---which clearly
+  has never happened.
   * **TEAM_PITCHING_H**: The largest outlier for this variable is over 30,000
   which is similarly highly unlikely. 
 
@@ -388,7 +381,7 @@ Since both appear with a heavy right skew, we will use median and IQR to remove
 the outliers.
 
 ```{r iqr_removal_SO}
-# remove outliers
+# Remove outliers
 train_set<- train_set %>%
   na.omit() %>%
   summarise(iqr = IQR(TEAM_PITCHING_SO)) %>%
@@ -441,20 +434,19 @@ train_set %>%
   
 This has eliminated what appears to be the most extreme outliers. There are
 still large outlier sets for Errors and Stolen Bases, but none that seem to
-dwarf the other variables. According to the box plot, things appear to be on a 
-scale that seems logical given the data and source of information that we have. 
+dwarf the other variables. According to the box plot, observations appear to be
+on a logical scale given the data. 
 
 ## Imputation
-From our early exploration of the data, the vast majority of the data is
+Our early exploration of the data showed that the majority of the data is
 complete with only a few variables with missing values. We will use the **MICE**
 (Multivariate Imputation by Chained Equations) method. MICE is a principled
-method for dealing with missing data. It creates multiple imputations, as
-opposed to single imputations, and accounts for the statistical uncertainty in
-these imputations. It creates predictive values for the mean instead of imputing
-the IQR values.
+method for dealing with missing data. It creates multiple imputations for the
+mean, as opposed to single imputations, and accounts for the statistical
+uncertainty in these imputations.
 
 ```{r impute_train}
-# imputing values
+# Imputing values
 train_set <- complete(mice(data = train_set, 
                          method = "pmm", 
                          seed = 9450, 
@@ -463,17 +455,18 @@ train_set <- complete(mice(data = train_set,
 
 ## Feature Engineering
 ### Single base hits
-With outliers removed and missing values imputed via MICE, we can create a few
-new variables. The first will be single base hits, and it will be derived from
-some of the variables we do have. We know that Team Batting Hits
-(`TEAM_BATTING_H`) is a combination of *all* hits for the season, so we can
-create Single Base Hits as follows: 
+With outliers removed and missing values imputed via MICE, we can create new
+variables. The first will be single base hits, and it will be derived from some
+of the variables we do have. We know that Team Batting Hits (`TEAM_BATTING_H`)
+is a combination of *all* hits for the season, so we can create Single Base Hits
+as follows: 
+
 \[
 Singles = Total\ Hits - (Doubles + Triples + Homeruns)
 \]
 
 ```{r singles}
-# defining singles variable 
+# Defining singles variable 
 train_set<- train_set %>%
   dplyr::select(-INDEX) %>%
   mutate_if(is.integer, as.numeric) %>%
@@ -492,7 +485,8 @@ composed of singles, doubles, triples, home runs and at-bats:
 \mathrm{SLG} ={\frac{{\mathit{1B}} + 2\times{\mathit{2B}} +
 3\times{\mathit{3B}} + 4\times {\mathit{HR}}}{\mathit{AtBats}}}
 \]
-Because we don't have a statistic for at-bats, we will approximate it as follows:  
+
+Because we don't have a statistic for at-bats, we will approximate it as:  
 
 \[
 \widehat{\mathrm{SLG}} = {\frac{\mathit{1B} + 2\times\mathit{2B} +
@@ -500,19 +494,19 @@ Because we don't have a statistic for at-bats, we will approximate it as follows
 \]
 
 ```{r make_slg_obp}
-# defining at bats and slugging variables
+# Defining at bats and slugging variables
 train_set<- train_set %>%
   mutate(AB = TEAM_BATTING_SO + TEAM_BATTING_BB + TEAM_BATTING_H,
          SLG = (TEAM_BATTING_1B + 2 * TEAM_BATTING_2B + 3 * TEAM_BATTING_3B +
                   4 * TEAM_BATTING_HR) / AB)
 ```
 
-As a gut-check, we can take a look at Slugging in comparison to Triples
+As a sanity check, we can take a look at Slugging in comparison to Triples
 (`TEAM_BATTING_3B`) and Home Runs (`TEAM_BATTING_HR`). All of these variables
 should have a positive correlation with the total number of wins. 
 
 ```{r slugging_compare, fig.height = 2.5, fig.width = 8, fig.align = 'center'}
-# visualizing slugging compared to wins
+# Visualizing slugging compared to wins
 modified_set <- train_set %>%
   dplyr::select(TARGET_WINS, SLG, TEAM_BATTING_3B, TEAM_BATTING_HR)
 ggplot(data = modified_set %>%
@@ -532,40 +526,38 @@ We will start with a simple linear model to serve as a baseline. This includes
 all variables in the dataset. 
 
 ```{r baseModel}
-##################### BUILD MODELS
-##### Model 1: Backwards Selection
+# BUILD MODELS
+# Model 1: Backwards Selection
 lm_reg = lm(data=train_set, TARGET_WINS ~ .)
 
 knitr::kable(summary(lm_reg)$coefficients, digits = 3L,
              caption = 'Base Model Regression Output')
 ```
 
-We can see off the bat that a few variables *exceed* the 0.05 p-value threshold for 
-significance. Additionally, we see that both `TEAM_BATTING_1B` and `AB` have no 
-coefficients at all! This is likely due to the fact that they are colinear with other 
-variables in the model. 
-
+We can immediately see that a few variables *exceed* the 0.05 p-value threshold
+for significance. Additionally, we see that both `TEAM_BATTING_1B` and `AB` have
+no coefficients at all! This is likely due to the fact that they are colinear
+with other variables in the model. 
 
 ### Enhanced Model
+We used a combination of domain knowledge and data analysis to justify removing
+some features. First, we are keeping the coefficient for `TEAM_BATTING_HR` since
+its p-value is marginally above the general threshold and knowledge of the game
+suggests it is important. We also chose to remove the `TEAM_BATTING_HBP`
+variable because most of the values are missing from the dataset. 
 
-We used a combination of domain knowledge and data analysis to justify removing/retaining 
-features. First, we are keeping the coefficient for `TEAM_BATTING_HR` since its p-value
-is marginally above the general threshold and knowledge of the game suggests it is important. 
-We also chose to remove the `TEAM_BATTING_HBP` variable because most of the values are
-missing from the dataset. 
-
-The remaining variables were chosen as a result of **backwards selection** based on null 
-hypothesis testing for non-zero slope. This is done by removing one variable at a
-time to determine the minimum number of significant variables needed for prediction.
+The remaining variables were chosen as a result of **backwards selection** based
+on null hypothesis testing for non-zero slope. This is done by removing one
+variable at a time to determine the minimum number of significant variables
+needed for prediction.
 
 Altogether, we end up **removing** 7 total variables: `TEAM_BATTING_1B`, `AB`, 
 `TEAM_BATTING_3B`, `TEAM_BATTING_H`, `TEAM_PITCHING_BB`, `TEAM_PITCHING_SO`, and
 `TEAM_BATTING_1B`.
 
-
 ### Further data transformation
-We will use Cook's distance to remove additional outliers that are influencing the fit of
-the model above. We will use a cutoff of \(\frac{4}{N}\).
+We used Cook's distance to remove additional outliers that are influencing the
+fit of the model above. We used a cutoff of \(\frac{4}{N}\).
 
 ```{r cooks_distance}
 # removing outliers via cooks distance
