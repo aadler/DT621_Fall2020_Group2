@@ -1,0 +1,124 @@
+---
+title: 'DATA 621 – Business Analytics and Data Mining: Homework #1'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, Bryan Persaud,
+  Jeff Shamp
+date: "9/27/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. DATA EXPLORATION (Amber)
+Describe the size and the variables in the moneyball training data set. Consider that too much detail will cause a manager to lose interest while too little detail will make the manager consider that you aren’t doing your job. Some suggestions are given below. Please do NOT treat this as a check list of things to do to complete the assignment. You should have your own thoughts on what to tell the boss. These are just ideas.
+
+a. Mean / Standard Deviation / Median
+b. Bar Chart or Box Plot of the data
+c. Is the data correlated to the target variable (or to other variables?)
+d. Are any of the variables missing and need to be imputed “fixed”?  
+  
+  
+## 2. DATA PREPARATION (25 Points)
+Describe how you have transformed the data by changing the original variables or creating new variables. If you did transform the data or create new variables, discuss why you did this. Here are some possible transformations.  
+
+a. Fix missing values (maybe with a Mean or Median value)
+b. Create flags to suggest if a variable was missing
+c. Transform data by putting it into buckets
+d. Mathematical transforms such as log or square root (or use Box-Cox)
+e. Combine variables (such as ratios or adding or multiplying) to create new variables
+
+
+## 3. BUILD MODELS (25 Points)
+Using the training data set, build at least three different multiple linear regression models, using different variables (or the same variables with different transformations). Since we have not yet covered automated variable selection methods, you should select the variables manually (unless you previously learned Forward or Stepwise selection, etc.). Since you manually selected a variable for inclusion into the model or exclusion into the model, indicate why this was done.  
+  
+Discuss the coefficients in the models, do they make sense? For example, if a team hits a lot of Home Runs, it would be reasonably expected that such a team would win more games. However, if the coefficient is negative (suggesting that the team would lose more games), then that needs to be discussed. Are you keeping the model even though it is counter intuitive? Why? The boss needs to know.
+
+  
+## 4. SELECT MODELS (25 Points)
+Decide on the criteria for selecting the best multiple linear regression model. Will you select a model with slightly worse performance if it makes more sense or is more parsimonious? Discuss why you selected your model.  
+  
+For the multiple linear regression model, will you use a metric such as Adjusted R2, RMSE, etc.? Be sure to explain how you can make inferences from the model, discuss multi-collinearity issues (if any), and discuss other relevant model output. Using the training data set, evaluate the multiple linear regression model based on (a) mean squared error, (b) R2, (c) F-statistic, and (d) residual plots. Make predictions using the evaluation data set.  
+
+## APPENDIX
+### Assignment Overview
+In this homework assignment, you will explore, analyze and model a data set containing approximately 2200
+records. Each record represents a professional baseball team from the years 1871 to 2006 inclusive. Each record
+has the performance of the team for the given year, with all of the statistics adjusted to match the performance of
+a 162 game season.  
+  
+Your objective is to build a multiple linear regression model on the training data to predict the number of wins
+for the team. You can only use the variables given to you (or variables that you derive from the variables
+provided). Below is a short description of the variables of interest in the data set: 
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{VARIABLE NAME} & \textbf{DEFINITION} & \textbf{THEORETICAL EFFECT} \\ \hline
+INDEX & Identification Variable (do not use) & None \\ \hline
+TARGET\_WINS & Number of wins & \\ \hline
+TEAM\_BATTING\_H & Base Hits by batters (1B,2B,3B,HR) & Positive Impact on Wins  \\ \hline
+TEAM\_BATTING\_2B & Doubles by batters (2B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_3B & Triples by batters (3B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_HR & Homeruns by batters (4B) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_BB & Walks by batters & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_HBP & Batters hit by pitch (get a free base) & Positive Impact on Wins \\ \hline
+TEAM\_BATTING\_SO & Strikeouts by batters & Negative Impact on Wins \\ \hline
+TEAM\_BASERUN\_SB & Stolen bases & Positive Impact on Wins \\ \hline
+TEAM\_BASERUN\_CS & Caught stealing & Negative Impact on Wins \\ \hline
+TEAM\_FIELDING\_E & Errors & Negative Impact on Wins \\ \hline
+TEAM\_FIELDING\_DP & Double Plays & Positive Impact on Wins \\ \hline
+TEAM\_PITCHING\_BB & Walks allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_H & Hits allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_HR & Homeruns allowed & Negative Impact on Wins \\ \hline
+TEAM\_PITCHING\_SO & Strikeouts by pitchers & Positive Impact on Wins \\ \hline
+
+\end{tabular}
+\end{center}
+
+
+
+### R Programming code
+
+```{r}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+```
+
+
+```{r}
+
+train_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-training-data.csv')
+eval_set <- read.csv('https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW1/data/moneyball-evaluation-data.csv')
+
+colnames(train_set)
+
+```
+
+# Data Transformation
+
+```{r}
+train_set <- train_set %>%
+  filter(TARGET_WINS >= 20 & TARGET_WINS <= 125 & TEAM_BATTING_H <= 1880 & TEAM_BATTING_2B >= 115 & TEAM_BATTING_2B <= 380 & TEAM_BATTING_BB >= 300 & TEAM_BATTING_BB <= 870 & TEAM_BATTING_SO <= 1540 & TEAM_PITCHING_HR <= 255 & TEAM_PITCHING_SO <= 1450)
+train_set[train_set == 0] <- NA
+```
+
+```{r}
+sub = melt(train_set)
+ggplot(sub, aes(x = value)) + geom_density() + facet_wrap(~ variable, scales = 'free')
+```
+
+# Build Model
+
+```{r}
+model1 <- lm(TARGET_WINS ~ ., train_set)
+summary(model1)
+```
+
+```{r}
+model2 <- lm(TARGET_WINS ~ TEAM_BATTING_H + TEAM_BATTING_HR + TEAM_BATTING_SO + TEAM_PITCHING_HR, train_set)
+summary(model2)
+```
