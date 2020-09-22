@@ -15,12 +15,10 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```{r}
 library(tidyverse)
 
-# urlRemote  = "https://raw.githubusercontent.com/"
-# pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
-# fileTrain   = "classification-output-data.csv"
-# data = paste0(urlRemote, pathGithub, fileTrain) %>% read.csv()
-
-data = read.csv("classification-output-data.csv")
+urlRemote  = "https://raw.githubusercontent.com/"
+pathGithub = "aadler/DT621_Fall2020_Group2/master/HW2/"
+fileTrain   = "classification-output-data.csv"
+data = paste0(urlRemote, pathGithub, fileTrain) %>% read.csv()
 ```
 
 ## The Dataset
