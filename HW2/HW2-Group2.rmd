@@ -1,0 +1,209 @@
+---
+title: 'DATA 621 - Business Analytics and Data Mining'
+subtitle: 'Fall 2020 - Group 2 - Homework #2'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "10/11/2020"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+
+# urlRemote  = "https://raw.githubusercontent.com/"
+# pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
+# fileTrain   = "classification-output-data.csv"
+# data = paste0(urlRemote, pathGithub, fileTrain) %>% read.csv()
+
+data = read.csv("classification-output-data.csv")
+```
+
+## The Dataset
+
+The data set contains n = 181 data points, and has three key columns that will be used:  
+
+* class: the actual class for the observation  
+* scored.class: the predicted class for the observation (based on a threshold of 0.5)  
+* scored.probability: the predicted probability of success for the observation  
+
+```{r data_table}
+class_data = data %>% select(class, pred_class = scored.class, pred_prob = scored.probability) 
+class_data %>% head() %>% knitr::kable(caption = "Preview of the Dataset")
+table(class_data[,1:2]) %>% knitr::kable(caption = "Counts of the Classification Data")
+```
+
+## Confusion Matrix & Functions
+
+A [confusion matrix](http://www.saedsayad.com/model_evaluation_c.htm) is a technique for summarizing the performance of a classification algorithm. It shows the number of correct and incorrect predictions made by the classification model compared to the actual outcomes (target value) in the data. The matrix is $N \times N$, where N is the number of target values (classes). The following table displays a 2x2 confusion matrix for two classes (Positive and Negative).
+
+```{r}
+cat("----------------------------------------------------------------------------
+                 |           Target          |
+Confusion Matrix |---------------------------|
+                 |   Positive  |   Negative  |
+-----------------|-------------|-------------|------------------------------
+      | Positive |      a      |      b      | Positive Predictive | a/(a+b)
+Model |----------|-------------|-------------|------------------------------
+      | Negative |      c      |      d      | Negative Predictive | d/(c+d)
+-----------------|-------------|-------------|------------------------------
+                 | Sensitivity | Specificity |                    
+                 |-------------|-------------|  Accuracy = (a+d)/(a+b+c+d)
+                 |   a/(a+c)   |   d/(b+d)   | 
+----------------------------------------------------------------------------")
+```
+
+
+* Accuracy: the proportion of the total number of predictions that were correct.  
+* Positive Predictive Value or Precision: the proportion of positive cases that were correctly identified.  
+* Negative Predictive Value: the proportion of negative cases that were correctly identified.  
+* Sensitivity or Recall: the proportion of actual positive cases which are correctly identified.   
+* Specificity: the proportion of actual negative cases which are correctly identified.  
+
+### Accuracy of the Predictions
+
+Function `accuracy` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the accuracy of the predictions. The formula is:
+
+\[Accuracy = \frac{TP + TN}{TP + FP + TN + FN}\]
+
+
+```{r accuracy, echo = TRUE}
+accuracy = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    dt = as.data.frame(table(df[, 1:2]))
+    TN = dt %>% filter(class == 0 & pred_class == 0) %>% select(Freq)
+    TP = dt %>% filter(class == 1 & pred_class == 1) %>% select(Freq)
+    return((TP + TN) / nrow(df))
+  }
+}
+```
+
+```{r accuracy_check}
+sprintf("The accuracy of the predictions for the classification data set is %1.3f%%.", accuracy(class_data)*100)
+```
+
+### Error Rate of the Predictions
+
+Function `error` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the classification error rate of the predictions. The formula is:
+
+\[\text{Classification Error Rate} = \frac{FP + FN}{TP + FP + TN + FN}\]
+
+```{r error, echo = TRUE}
+error = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    dt = as.data.frame(table(df[, 1:2]))
+    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
+    FN = dt %>% filter(class == 1 & pred_class == 0) %>% select(Freq)
+    return((FP + FN) / nrow(df))
+  }
+}
+```
+
+```{r error_check}
+sprintf("The error rate of the predictions for the classification data set is %0.3f.", error(class_data))
+
+sprintf("The accuracy and error rate of the predictions must sum to 1. For the classification data set, there summation equals to %.3f.", accuracy(class_data) + error(class_data))
+```
+
+### Precision of the Predictions
+
+Function `precision` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the precision of the predictions. The formula is:
+
+\[precision = \frac{TP}{TP + FP}\]
+
+```{r precision, echo = TRUE}
+precision = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    dt = as.data.frame(table(df[, 1:2]))
+    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
+    TP = dt %>% filter(class == 1 & pred_class == 1) %>% select(Freq)
+    return(TP / (TP + FP))
+  }
+}
+```
+
+```{r precision_check}
+sprintf("The precision of the predictions for the classification data set is %0.3f.", 
+precision(class_data))
+```
+
+### Sensitivity of the Predictions
+
+Function `sensitivity` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the sensitivity of the predictions. Sensitivity is also known as recall. The formula is:
+
+\[sensitivity = \frac{TP}{TP + FN}\]
+
+```{r sensitivity, echo = TRUE}
+sensitivity = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    dt = as.data.frame(table(df[, 1:2]))
+    FN = dt %>% filter(class == 1 & pred_class == 0) %>% select(Freq)
+    TP = dt %>% filter(class == 1 & pred_class == 1) %>% select(Freq)
+    return(TP / (TP + FN))
+  }
+}
+```
+
+```{r sensitivity_check}
+sprintf("The sensitivity of the predictions for the classification data set is %0.3f.", 
+sensitivity(class_data))
+```
+
+### Specificity of the Predictions
+
+Function `specificity` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the specificity of the predictions. The formula is:
+
+\[specificity = \frac{TN}{TN + FP}\]
+
+```{r specificity, echo = TRUE}
+specificity = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    dt = as.data.frame(table(df[, 1:2]))
+    TN = dt %>% filter(class == 0 & pred_class == 0) %>% select(Freq)
+    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
+    return(TN / (TN + FP))
+  }
+}
+```
+
+```{r specificity_check}
+sprintf("The specificity of the predictions for the classification data set is %0.3f.", 
+specificity(class_data))
+```
+
+### F1 Score of the Predictions
+
+Function `f1_score` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the F1 score of the predictions. The formula is:
+
+\[\text{F1 Score} = \frac{2 \times Precision \times Sensitivity}{Precision + Sensitivity}\]
+
+```{r f1_score, echo = TRUE}
+f1_score = function(df) {
+  if (is.data.frame(df) == FALSE) {
+    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    return((2*precision(df)*sensitivity(df)) / (precision(df) + sensitivity(df)))
+  }
+}
+```
+
+```{r f1_score_check}
+sprintf("The F1 score of the predictions for the classification data set is %0.3f.", 
+f1_score(class_data))
+```
+
+
