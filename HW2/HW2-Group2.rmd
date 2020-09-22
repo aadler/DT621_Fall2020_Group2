@@ -301,4 +301,4 @@ f1_score(class_data))
 
 ### Caret Package
 
-```{rpROC Package
+```{r### Package
