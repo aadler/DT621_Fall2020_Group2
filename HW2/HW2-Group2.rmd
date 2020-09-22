@@ -256,6 +256,7 @@ roc_score <- function(df){
       ylab("True Positive Rate") +
       geom_abline(intercept = 0, slope = 1)
     
+    # out <- c(roc_plt, auc)
     return(roc_plt)
   }
   

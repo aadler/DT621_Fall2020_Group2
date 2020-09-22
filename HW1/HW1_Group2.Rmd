@@ -933,7 +933,7 @@ eval_set <- eval_set %>%
 # final predictions
 predictions <- round(predict(lm_1, newdata = eval_set))
 summary(predictions)
-predictions
+predictions 
 ```
 
 # REFERENCES
