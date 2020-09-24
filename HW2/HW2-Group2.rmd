@@ -21,12 +21,10 @@ knitr::opts_chunk$set(echo=TRUE, error=FALSE, warning=FALSE, message=FALSE)
 
 # 1. The Data
 ```{r loadData, echo=FALSE}
-# urlRemote  = "https://raw.githubusercontent.com/"
-# pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
-# fileTrain   = "classification-output-data.csv"
-# data = paste0(urlRemote, pathGithub, fileTrain) %>% read.csv()
-
-data <- read.csv("./classification-output-data.csv")
+urlRemote  = "https://raw.githubusercontent.com/"
+pathGithub = "aadler/DT621_Fall2020_Group2/master/HW2/"
+fileTrain   = "classification-output-data.csv"
+data = read.csv(paste0(urlRemote, pathGithub, fileTrain))
 ```
 
 The data set contains `r dim(data)[[1]]` data points, and has three key target
@@ -45,7 +43,7 @@ the number of correct and incorrect predictions made by the classification model
 and compares it to the actual outcomes in the data. The matrix is
 \(N \times N\), where \(N\) is the number of target values. The following table
 displays a \(2\times 2\) confusion matrix for two classes---positive and
-negative. The actual confusion matrix are the 4 cells containing `a`, `b`, `c`,
+negative. The actual confusion matrix is the 4 cells containing `a`, `b`, `c`,
 and `d`. The enhancements around the matrix display the definitions for many
 common classification metrics.
 
@@ -108,7 +106,7 @@ ACC <- function(df) {
 }
 ```
 
-For this dataset the accuracy is 
+For this dataset, the accuracy is 
 `r prettyNum(ACC(class_data) * 100, digits = 5L)`%.
 
 # 4. Classification Error Rate
@@ -131,7 +129,7 @@ CER <- function(df) {
 }
 ```
 
-For this dataset the classification error rate is
+For this dataset, the classification error rate is
 `r prettyNum(CER(class_data) * 100, digits = 5L)`%.
 
 Mathematically, the classification error rate must be identical to
@@ -160,7 +158,7 @@ PRC <- function(df) {
 }
 ```
 
-For this dataset the precision is
+For this dataset, the precision is
 `r prettyNum(PRC(class_data) * 100, digits = 5L)`%.
 
 # 6. Sensitivity or Recall
@@ -183,7 +181,7 @@ SNS <- function(df) {
 }
 ```
 
-For this dataset the sensitivity is
+For this dataset, the sensitivity is
 `r prettyNum(SNS(class_data) * 100, digits = 5L)`%.
 
 # 7. Specificity
@@ -206,7 +204,7 @@ SPC <- function(df) {
 }
 ```
 
-For this dataset the specificity is
+For this dataset, the specificity is
 `r prettyNum(SPC(class_data) * 100, digits = 5L)`%.
 
 # 8. \(F_1\) Score
@@ -230,13 +228,14 @@ F1 <- function(df) {
 }
 ```
 
-For this dataset the \(F_1\) score is
+For this dataset, the \(F_1\) score is
 `r prettyNum(F1(class_data) * 100, digits = 5L)`%.
 
 # 9. Bounds on \(F_1\)
 ## Proof 1
-We can prove this by decomposing the metrics into their component parts as
+We can prove this by decomposing the metrics into their component as
 defined above.
+
 \[
 \begin{aligned}
 F_{1:numerator} &= 2 \cdot P \cdot S\\
@@ -253,7 +252,7 @@ F_1 &= \frac{F_{1:numerator}}{F_{1:denominator}}\\
 \end{aligned}
 \]
 
-Now this last equation ***must*** be bounded between 0 and 1. Consider that TP
+Now, this last equation ***must*** be bounded between 0 and 1. Consider that TP
 is a non-negative integer. Also, the sum of TP, FP, TN, and FN must equal the
 number of observations. Excluding the degenerate case where the dataset contains
 only negative classes and they were all scored properly, the denominator will
@@ -273,10 +272,10 @@ themselves are constrained to \([0, 1]\). Given those assumptions, it ***must***
 be true that \(2ab < a + b\). This is a corollary of the
 [*AM-GM inequality*](https://en.wikipedia.org/wiki/Inequality_of_arithmetic_and_geometric_means)
 since if \(a, b \in [0, 1]\) then \(\sqrt{ab} > ab\) and this inequality is
-strict. Thus the numerator must be strictly less than the denominator. Both
+strict. Thus, the numerator must be strictly less than the denominator. Both
 numerator and denominator are bounded by \([0, 1]\) as per the initial
 assumptions. Therefore, excepting the degenerate case where both are 0,
-this completed the proof the fraction too is bounded by \([0, 1]\). ***QED***
+this completes the proof that the fraction too is bounded by \([0, 1]\). ***QED***
 
 # 10. ROC Curve
 The receiver operating curve (ROC) is defined as a plot of the true positive
@@ -288,7 +287,7 @@ being positive. It then steps along a sequence from 0 to 1, assigning classes
 based on that sequence, calculating the TPR and FPR for each threshold, plotting
 the results when completed. Lastly, it calculates the area under the ROC (AUC).
 Trapezoidal quadrature will be used to estimate the AUC from the table created
-for the ROC, as the intervals on the x axis are not equidistant.
+for the ROC, as the intervals on the x-axis are not equidistant.
 
 ```{r ROC}
 ROC <- function(df) {
@@ -322,7 +321,7 @@ ROC(class_data)
 ```
 
 # 11. Metric Production
-All the metrics were displayed in their sections, but will be reproduced here
+All the metrics were displayed in their sections but will be reproduced here
 as well.
 
 ```{r sec11}
@@ -372,4 +371,4 @@ auc(pROCroc)
 Visual inspection of the two ROC curves shows extremely similar shapes. The AUC
 scores are also practically identical. Originally, we used the suggested 101
 points between 0 and 1. This led to a difference of less than 1% in the AUC
-scores. Moving to a 1001-point quadrature all but eliminated that difference.
+scores. Moving to a 1001-point quadrature all but eliminated that difference. 
