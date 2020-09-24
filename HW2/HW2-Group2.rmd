@@ -21,7 +21,6 @@ knitr::opts_chunk$set(echo=TRUE, error=FALSE, warning=FALSE, message=FALSE)
 
 # 1. The Data
 ```{r loadData, echo=FALSE}
-library(tidyverse)
 # urlRemote  = "https://raw.githubusercontent.com/"
 # pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
 # fileTrain   = "classification-output-data.csv"
@@ -78,9 +77,10 @@ Model |----------|-------------|-------------|------------------------------
   properly detected by the model.
 
 ```{r dataCM, echo=FALSE}
-class_data = data %>% select(class, pred_class = scored.class,
-                             pred_prob = scored.probability) 
-table(class_data[,1:2]) %>% knitr::kable(caption = "Raw Confusion Matrix")
+class_data <-  data.frame(class = data$class,
+                          pred_class = data$scored.class,
+                          pred_prob = data$scored.probability)
+knitr::kable(table(class_data[,1:2]), caption = "Raw Confusion Matrix")
 ```
 
 The raw confusion matrix is shown above. In this case, the rows represent the 
@@ -90,8 +90,9 @@ internally consistent.
 
 # 3. Accuracy
 The function `ACC` below takes as input a data frame whose first two columns are
-the true class and the modeled class respectively. It returns the accuracy of
-the predictions using the following formula:
+the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the accuracy of the predictions using the following
+formula:
 
 \[
 \textrm{Accuracy} = \frac{TP + TN}{TP + FP + TN + FN}
@@ -102,8 +103,7 @@ ACC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt <- table(df[, 1:2])
-    sum(diag(dt)) / sum(dt)
+    sum(df$class == df$pred_class) / dim(df)[[1]]
   }
 }
 ```
@@ -113,7 +113,7 @@ For this dataset the accuracy is
 
 # 4. Classification Error Rate
 The function `CER` below takes as input a data frame whose first two columns
-are the true class and the modeled class respectively. It returns the
+are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
 classification error rate of the predictions using the following formula:
 
 \[
@@ -125,8 +125,7 @@ CER <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt <- table(df[, 1:2])
-    (sum(dt) - sum(diag(dt))) / sum(dt)
+    sum(df$class != df$pred_class) / dim(df)[[1]]
   }
 }
 ```
@@ -142,7 +141,7 @@ Mathematically, the classification error rate must be identical to
 
 # 5. Precision
 The function `PRC` below takes as input a data frame whose first two columns
-are the true class and the modeled class respectively. It returns the
+are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
 classification error rate of the predictions using the following formula:
 
 \[
@@ -154,8 +153,7 @@ PRC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt <- table(df[, 1:2])
-    dt[2, 2] / sum(dt[, 2])
+    sum(df$class == 1 & df$pred_class == 1) / sum(df$pred_class == 1)
   }
 }
 ```
@@ -165,7 +163,7 @@ For this dataset the precision is
 
 # 6. Sensitivity or Recall
 The function `SNS` below takes as input a data frame whose first two columns
-are the true class and the modeled class respectively. It returns the
+are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
 sensitivity of the predictions using the following formula:
 
 \[
@@ -177,8 +175,7 @@ SNS <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt <- table(df[, 1:2])
-    dt[2, 2] / sum(dt[2, ])
+    sum(df$class == 1 & df$pred_class == 1) / sum(df$class == 1)
   }
 }
 ```
@@ -188,7 +185,7 @@ For this dataset the sensitivity is
 
 # 7. Specificity
 The function `SPC` below takes as input a data frame whose first two columns
-are the true class and the modeled class respectively. It returns the
+are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
 specificity of the predictions using the following formula:
 
 \[
@@ -200,8 +197,7 @@ SPC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt <- table(df[, 1:2])
-    dt[1, 1] / sum(dt[1, ])
+    sum(df$class == 0 & df$pred_class == 0) / sum(df$class == 0)
   }
 }
 ```
@@ -211,7 +207,7 @@ For this dataset the specificity is
 
 # 8. \(F_1\) Score
 The function `F1` below takes as input a data frame whose first two columns
-are the true class and the modeled class respectively. It returns the
+are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
 \(F_1\) score of the predictions using the following formula:
 
 \[
@@ -276,3 +272,28 @@ strict. Thus the numerator must be strictly less than the denominator. Both
 numerator and denominator are bounded by \([0, 1]\) as per the initial
 assumptions. Therefore, excepting the degenerate case where both are 0,
 this completed the proof the fraction too is bounded by \([0, 1]\). ***QED***
+
+10. ROC Curve
+The ROC curve is defined as a plot of the true positive rate against the false
+positive rate at different probability thresholds. The false positive rate is
+usually plotted on the x-axis.
+
+```{r ROC}
+ROC <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
+  } else {
+    rocTable <- data.table(thresh = seq(0, 1, 0.01),
+                           x = double(101),
+                           y = double(101))
+    for (i in seq_along(rocTable$thresh)) {
+      dftmp <- data.frame(class = df$class,
+                          pred_class = ifelse(df$pred_prob > rocTable$thresh[i],
+                                              1, 0))
+      rocTable$x[i] <- 1 - SPC(dftmp)
+      rocTable$y[i] <- SNS(dftmp)
+    }
+    plot(rocTable$x, rocTable$y, type = 'l')
+  }
+}
+```
