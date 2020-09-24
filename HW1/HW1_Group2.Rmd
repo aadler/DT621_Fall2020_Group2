@@ -944,7 +944,9 @@ predictions
 
 # CODE APPENDIX
 The code chunks below represent the R code called in order during the analysis.
-They are reproduced in the appendix for review and comment.
+They are reproduced in the appendix for review and comment. The Rmd may be found
+at https://github.com/aadler/DT621_Fall2020_Group2/blob/master/HW1/HW1_Group2.Rmd
+
 ```{r appendix, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
