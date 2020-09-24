@@ -1,0 +1,221 @@
+---
+title: "HW3 - EDA and Modeling"
+author: "Jeff Shamp"
+date: "9/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(kernlab)
+library(vip)
+```
+
+## Crime Data
+
+This is a classification model, so the data is labeled as below median crime (0) or above median crime rate (1). 
+
+We will first look at the state of the training data. 
+
+```{r}
+crime_df<- read.csv("/Users/jeffshamp/Downloads/crime-training-data_modified.csv")
+glimpse(crime_df)
+```
+
+### missing data
+
+let's look for missing data (NA) and zeros. Zero are going to be okay in for a few variables. 
+
+```{r}
+glimpse(
+  crime_df %>%
+  summarize_all(funs(sum(is.na(.))/length(.)))
+) 
+glimpse(
+crime_df %>%
+  summarize_all(funs(length(which(. ==0)))))
+```
+
+No missing data. Great!
+
+
+
+```{r}
+ggplot(stack(crime_df %>% select(-tax)), aes(x=ind, y-values)) +
+  geom_boxplot() + coord_flip()
+```
+
+
+```{r}
+crime_df %>%
+  ggplot(aes(age, medv, color=chas)) +
+  geom_point()
+```
+
+```{r}
+crime_df %>%
+  ggplot(aes(x=tax)) + geom_histogram()
+```
+probably shouldn't log transform that. 
+
+
+```{r}
+ggplot(stack(crime_df %>% select(-c('chas', 'target', 'tax', 'nox', 'rm', 'rad'))), aes(x=values)) +
+  geom_histogram() + facet_wrap(~ind)
+```
+
+```{r}
+ggplot(stack(crime_df %>% select(c('nox', 'rm', 'rad'))), aes(x=values)) + geom_histogram() + facet_wrap(~ind)
+```
+
+
+### Result
+
+This data is pretty good in terms of the required prep before modeling. Maybe some work to remove outliers via cooks distance, or maybe some transformations, but it doesn't look like much is needed. 
+
+## Model
+
+As a baseline, let's just run a logistic regression and a vanilla XGB on this data set and compare. 
+
+We will split up the training data to perform cv and compare the two models. 
+
+
+```{r, message=FALSE}
+library(tidymodels)
+library(xgboost)
+set.seed(9450)
+```
+
+
+```{r}
+crime_df<- crime_df %>% mutate(target = as.factor(target))
+data_split <- initial_split(crime_df, strata = target, prop = 0.8)
+train_df<- training(data_split)
+test_df<- testing(data_split)
+```
+
+
+```{r}
+xgb_specs <- 
+  boost_tree(
+    trees =500
+  ) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+logit_specs <- 
+  logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+# cls_recipe<-
+#   crime_df %>%
+#   recipe(target ~ .) %>%
+#   step_scale(all_predictors()) %>%
+#   step_center(all_predictors())
+
+cls_wf<-
+  workflow() %>%
+  add_formula(target ~ .) %>%
+  #add_recipe(cls_recipe) %>%
+  add_model(logit_specs)
+```
+
+
+```{r}
+cv_folds<- vfold_cv(train_df,
+                    v = 5, repeats = 1)
+
+cls_results<-
+  fit_resamples(
+    cls_wf,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE)
+)
+```
+
+
+```{r}
+best_model_auc <- select_best(cls_results, "roc_auc")
+```
+
+
+```{r}
+final_logit_auc<-
+  finalize_workflow(
+    cls_wf,
+    best_model_auc
+)
+
+final_logit_auc %>%
+  last_fit(data_split) %>%
+  collect_predictions() %>%
+  conf_mat(truth = target, estimate = .pred_class)
+final_logit_auc %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+```
+
+```{r}
+final_logit_auc %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='red4'))
+```
+
+
+
+Now repeat with xgb. 
+
+```{r}
+cls_wf<-
+  workflow() %>%
+  add_formula(target ~ .) %>%
+  #add_recipe(cls_recipe) %>%
+  add_model(xgb_specs)
+
+cv_folds<- vfold_cv(train_df,
+                    v = 5, repeats = 1)
+
+cls_results<-
+  fit_resamples(
+    cls_wf,
+    resamples = cv_folds,
+    control = control_grid(save_pred = TRUE)
+)
+best_model_auc <- select_best(cls_results, "roc_auc")
+final_xgb_auc<-
+  finalize_workflow(
+    cls_wf,
+    best_model_auc
+)
+
+final_xgb_auc %>%
+  last_fit(data_split) %>%
+  collect_predictions() %>%
+  conf_mat(truth = target, estimate = .pred_class)
+```
+
+Ok from a vanilla run of logistic and xgb we have reasonably comparable models. 
+
+```{r}
+final_xgb_auc %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+```
+
+
+```{r}
+library(vip)
+
+final_xgb_auc %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='blue4'))
+```
+
+
+
+
+
