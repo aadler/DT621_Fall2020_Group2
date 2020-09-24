@@ -1,11 +1,12 @@
 ---
-title: 'DATA 621 - Business Analytics and Data Mining'
-subtitle: 'Fall 2020 - Group 2 - Homework #2'
-author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
-    Bryan Persaud, Jeff Shamp
+title: "DATA 621 - Business Analytics and Data Mining"
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, Bryan Persaud,
+  Jeff Shamp
 date: "10/11/2020"
 output:
   html_document: default
+  pdf_document: default
+subtitle: 'Fall 2020 - Group 2 - Homework #2'
 ---
 
 ```{r setup, include=FALSE}
@@ -70,68 +71,77 @@ Model |----------|-------------|-------------|------------------------------
   * **Specificity**: the proportion of actual negative cases that were
   properly detected by the model.
 
-The raw confusion matrix 
 ```{r data_table}
 class_data = data %>% select(class, pred_class = scored.class,
                              pred_prob = scored.probability) 
-class_data %>% head() %>% knitr::kable(caption = "Preview of the Dataset")
+table(class_data[,1:2]) %>% knitr::kable(caption = "Raw Confusion Matrix")
 ```
 
+The raw confusion matrix is shown above. In this case, the rows represent the 
+**true** classes and the columns represent the **predicted** classes. This is
+not the same order as the hand-drawn confusion matrix above, but both are
+internally consistent.
 
-### Accuracy of the Predictions
-The function, `accuracy` below takes as input a data frame whose first two
-columns are the true class and the modeled class respectively. It returns the
-accuracy of the predictions using the following formula:
+# 3. Accuracy
+The function `ACC` below takes as input a data frame whose first two columns are
+the true class and the modeled class respectively. It returns the accuracy of
+the predictions using the following formula:
 
 \[
 \textrm{Accuracy} = \frac{TP + TN}{TP + FP + TN + FN}
 \]
 
 ```{r accuracy, echo = TRUE}
-accuracy <- function(df) {
+ACC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt = table(df[, 1:2])
+    dt <- table(df[, 1:2])
     sum(diag(dt)) / sum(dt)
   }
 }
 ```
 
-```{r accuracy_check}
-sprintf("The accuracy of the predictions for the classification data set is %1.3f%%.",
-        accuracy(class_data) * 100)
-```
+For this dataset the accuracy is 
+`r prettyNum(ACC(class_data) * 100, digits = 5L)`%.
 
-### Error Rate of the Predictions
-Function `error` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the classification error rate of the predictions. The formula is:
+# 4. Classification Error Rate
+The function `CER` below takes as input a data frame whose first two columns
+are the true class and the modeled class respectively. It returns the
+classification error rate of the predictions using the following formula:
 
-\[\text{Classification Error Rate} = \frac{FP + FN}{TP + FP + TN + FN}\]
+\[
+\textrm{Classification Error Rate} = \frac{FP + FN}{TP + FP + TN + FN}
+\]
 
 ```{r error, echo = TRUE}
-error = function(df) {
-  if (is.data.frame(df) == FALSE) {
-    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+CER <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt = as.data.frame(table(df[, 1:2]))
-    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
-    FN = dt %>% filter(class == 1 & pred_class == 0) %>% select(Freq)
-    return((FP + FN) / nrow(df))
+    dt <- table(df[, 1:2])
+    (sum(dt) - sum(diag(dt))) / sum(dt)
   }
 }
 ```
 
-```{r error_check}
-sprintf("The error rate of the predictions for the classification data set is %0.3f.", error(class_data))
+For this dataset the classification error rate is
+`r prettyNum(CER(class_data) * 100, digits = 5L)`%.
 
-sprintf("The accuracy and error rate of the predictions must sum to 1. For the classification data set, there summation equals to %.3f.", accuracy(class_data) + error(class_data))
-```
+Mathematically, the classification error rate must be identical to
+\(1 - \textrm{Accuracy}\). In this data set that is clear as 
+`r prettyNum(ACC(class_data) * 100, digits = 5L)`% +
+`r prettyNum(CER(class_data) * 100, digits = 5L)`% = 
+`r prettyNum((CER(class_data) + ACC(class_data)) * 100, digits = 5L)`%.
 
-### Precision of the Predictions
+# 5. Precision
+The function `PRC` below takes as input a data frame whose first two columns
+are the true class and the modeled class respectively. It returns the
+classification error rate of the predictions using the following formula:
 
-Function `precision` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the precision of the predictions. The formula is:
-
-\[precision = \frac{TP}{TP + FP}\]
+\[
+\textrm{Precision} = \frac{TP}{TP + FP}
+\]
 
 ```{r precision, echo = TRUE}
 precision = function(df) {
