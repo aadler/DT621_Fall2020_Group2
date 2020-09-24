@@ -287,13 +287,15 @@ a third column named `pred_prob` which reflects the predicted probability of
 being positive. It then steps along a sequence from 0 to 1, assigning classes
 based on that sequence, calculating the TPR and FPR for each threshold, plotting
 the results when completed. Lastly, it calculates the area under the ROC (AUC).
+Trapezoidal quadrature will be used to estimate the AUC from the table created
+for the ROC, as the intervals on the x axis are not equidistant.
 
 ```{r ROC}
 ROC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    rocTable <- data.table(thresh = seq(0, 1, 0.01),
+    rocTable <- data.frame(thresh = seq(0, 1, 0.01),
                            x = double(101),
                            y = double(101))
     for (i in seq_along(rocTable$thresh)) {
@@ -303,8 +305,19 @@ ROC <- function(df) {
       rocTable$x[i] <- 1 - SPC(dftmp)
       rocTable$y[i] <- SNS(dftmp)
     }
-    plot(rocTable$x, rocTable$y, type = 'l', xlab = "False Positive Rate",
-         ylab = 'True Positive Rate')
   }
+  return(list(plot = {plot(rocTable$x, rocTable$y, type = 'l',
+                          xlab = "False Positive Rate",
+                          ylab = 'True Positive Rate')
+    lines(c(0, 1), c(0, 1), lty = 2)},
+              AUC = sum((rocTable$y[1:100] + rocTable$y[2:101]) * 0.5 *
+                          (rocTable$x[1:100] - rocTable$x[2:101]))))
 }
 ```
+
+The ROC and AUC for the dataset provided is shown below:
+
+```{r ROCdata, echo=FALSE, fig.height=6}
+ROC(class_data)
+```
+
