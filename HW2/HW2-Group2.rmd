@@ -238,7 +238,7 @@ For this dataset the \(F_1\) score is
 We can prove this by decomposing the metrics into their component parts as
 defined above.
 \[
-\begin{align}
+\begin{aligned}
 F_{1:numerator} &= 2 \cdot P \cdot S\\
 &= 2 \cdot \frac{TP}{TP + FP} \cdot \frac{TP}{TP + FN}\\
 &= \frac{2\cdot(TP)^2}{(TP+FP)(TP+FN)}\\
@@ -250,7 +250,7 @@ F_{1:denominator} &= P + S\\
 F_1 &= \frac{F_{1:numerator}}{F_{1:denominator}}\\
 &= \frac{2\cdot(TP)^2}{2\cdot(TP)^2 + TP\cdot (FN + FP)}\\
 &= \frac{2\cdot TP}{2\cdot TP + FN + FP}
-\end{align}
+\end{aligned}
 \]
 
 Now this last equation ***must*** be bounded between 0 and 1. Consider that TP
@@ -278,7 +278,7 @@ numerator and denominator are bounded by \([0, 1]\) as per the initial
 assumptions. Therefore, excepting the degenerate case where both are 0,
 this completed the proof the fraction too is bounded by \([0, 1]\). ***QED***
 
-10. ROC Curve
+# 10. ROC Curve
 The receiver operating curve (ROC) is defined as a plot of the true positive
 rate (TPR) against the false positive rate (FPR) at different probability
 thresholds. The FPR is usually plotted on the x-axis. The function below takes
@@ -295,9 +295,9 @@ ROC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    rocTable <- data.frame(thresh = seq(0, 1, 0.01),
-                           x = double(101),
-                           y = double(101))
+    rocTable <- data.frame(thresh = seq(0, 1, 0.001),
+                           x = double(1001),
+                           y = double(1001))
     for (i in seq_along(rocTable$thresh)) {
       dftmp <- data.frame(class = df$class,
                           pred_class = ifelse(df$pred_prob > rocTable$thresh[i],
@@ -310,14 +310,14 @@ ROC <- function(df) {
                           xlab = "False Positive Rate",
                           ylab = 'True Positive Rate')
     lines(c(0, 1), c(0, 1), lty = 2)},
-              AUC = sum((rocTable$y[1:100] + rocTable$y[2:101]) * 0.5 *
-                          (rocTable$x[1:100] - rocTable$x[2:101]))))
+              AUC = sum((rocTable$y[1:1000] + rocTable$y[2:1001]) * 0.5 *
+                          (rocTable$x[1:1000] - rocTable$x[2:1001]))))
 }
 ```
 
 The ROC and AUC for the dataset provided is shown below:
 
-```{r ROCdata, echo=FALSE, fig.height=6}
+```{r ROCdata, echo=FALSE, fig.height=6, fig.width=6}
 ROC(class_data)
 ```
 
@@ -332,7 +332,6 @@ PRC(class_data)
 SNS(class_data)
 SPC(class_data)
 F1(class_data)
-ROC(class_data)
 ```
 
 # 12. Using the `caret` package
@@ -360,4 +359,17 @@ As can be seen above, when the functions are called with proper identification
 of the negative and positive cases, our results match the `caret` package
 results.
 
-# 13.
+# 13. Using the `pROC` package
+
+```{r pROC, fig.height=6, fig.width=6}
+ROC(class_data)
+library(pROC)
+pROCroc <- roc(class_data, class, pred_prob)
+plot(pROCroc)
+auc(pROCroc)
+```
+
+Visual inspection of the two ROC curves shows extremely similar shapes. The AUC
+scores are also practically identical. Originally, we used the suggested 101
+points between 0 and 1. This led to a difference of less than 1% in the AUC
+scores. Moving to a 1001-point quadrature all but eliminated that difference.
