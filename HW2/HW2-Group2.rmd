@@ -10,11 +10,17 @@ subtitle: 'Fall 2020 - Group 2 - Homework #2'
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(echo=TRUE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 
+# 0. Preamble
+***For all the following answers, it is expected that we are only dealing with***
+***binary classification in which negative is coded as 0 and positive is coded***
+***as 1. It is not difficult to expand the functions to respond to more general***
+***cases, but it is an unnecessary complication for this homework assignment.***
+
 # 1. The Data
-```{r}
+```{r loadData, echo=FALSE}
 library(tidyverse)
 # urlRemote  = "https://raw.githubusercontent.com/"
 # pathGithub = "aadler/DT621_Fall2020_Group2/master/HW1/data/"
@@ -44,7 +50,7 @@ negative. The actual confusion matrix are the 4 cells containing `a`, `b`, `c`,
 and `d`. The enhancments around the matrix display the definitions for many
 common classification metrics.
 
-```{r}
+```{r confMatrixDesc, echo=FALSE}
 cat("----------------------------------------------------------------------------
                  |           Target          |
 Confusion Matrix |---------------------------|
@@ -71,7 +77,7 @@ Model |----------|-------------|-------------|------------------------------
   * **Specificity**: the proportion of actual negative cases that were
   properly detected by the model.
 
-```{r data_table}
+```{r dataCM, echo=FALSE}
 class_data = data %>% select(class, pred_class = scored.class,
                              pred_prob = scored.probability) 
 table(class_data[,1:2]) %>% knitr::kable(caption = "Raw Confusion Matrix")
@@ -91,7 +97,7 @@ the predictions using the following formula:
 \textrm{Accuracy} = \frac{TP + TN}{TP + FP + TN + FN}
 \]
 
-```{r accuracy, echo = TRUE}
+```{r accuracy}
 ACC <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
@@ -114,7 +120,7 @@ classification error rate of the predictions using the following formula:
 \textrm{Classification Error Rate} = \frac{FP + FN}{TP + FP + TN + FN}
 \]
 
-```{r error, echo = TRUE}
+```{r error}
 CER <- function(df) {
   if (!is.data.frame(df)) {
     stop("Data set is not a dataframe. Try as.data.frame(dataset).")
@@ -143,71 +149,65 @@ classification error rate of the predictions using the following formula:
 \textrm{Precision} = \frac{TP}{TP + FP}
 \]
 
-```{r precision, echo = TRUE}
-precision = function(df) {
-  if (is.data.frame(df) == FALSE) {
-    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+```{r precision}
+PRC <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt = as.data.frame(table(df[, 1:2]))
-    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
-    TP = dt %>% filter(class == 1 & pred_class == 1) %>% select(Freq)
-    return(TP / (TP + FP))
+    dt <- table(df[, 1:2])
+    dt[2, 2] / sum(dt[, 2])
   }
 }
 ```
 
-```{r precision_check}
-sprintf("The precision of the predictions for the classification data set is %0.3f.", 
-precision(class_data))
-```
+For this dataset the precision is
+`r prettyNum(PRC(class_data) * 100, digits = 5L)`%.
 
-### Sensitivity of the Predictions
+# 6. Sensitivity or Recall
+The function `SNS` below takes as input a data frame whose first two columns
+are the true class and the modeled class respectively. It returns the
+sensitivity of the predictions using the following formula:
 
-Function `sensitivity` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the sensitivity of the predictions. Sensitivity is also known as recall. The formula is:
+\[
+\textrm{Sensitivity} = \frac{TP}{TP + FN}
+\]
 
-\[sensitivity = \frac{TP}{TP + FN}\]
-
-```{r sensitivity, echo = TRUE}
-sensitivity = function(df) {
-  if (is.data.frame(df) == FALSE) {
-    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+```{r sensitivity}
+SNS <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt = as.data.frame(table(df[, 1:2]))
-    FN = dt %>% filter(class == 1 & pred_class == 0) %>% select(Freq)
-    TP = dt %>% filter(class == 1 & pred_class == 1) %>% select(Freq)
-    return(TP / (TP + FN))
+    dt <- table(df[, 1:2])
+    dt[2, 2] / sum(dt[2, ])
   }
 }
 ```
 
-```{r sensitivity_check}
-sprintf("The sensitivity of the predictions for the classification data set is %0.3f.", 
-sensitivity(class_data))
-```
+For this dataset the sensitivity is
+`r prettyNum(SNS(class_data) * 100, digits = 5L)`%.
 
-### Specificity of the Predictions
+# 7. Specificity
+The function `SPC` below takes as input a data frame whose first two columns
+are the true class and the modeled class respectively. It returns the
+specificity of the predictions using the following formula:
 
-Function `specificity` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the specificity of the predictions. The formula is:
+\[
+\textrm{Specificity} = \frac{TN}{TN + FP}
+\]
 
-\[specificity = \frac{TN}{TN + FP}\]
-
-```{r specificity, echo = TRUE}
-specificity = function(df) {
-  if (is.data.frame(df) == FALSE) {
-    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+```{r specificity}
+SPC <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    dt = as.data.frame(table(df[, 1:2]))
-    TN = dt %>% filter(class == 0 & pred_class == 0) %>% select(Freq)
-    FP = dt %>% filter(class == 0 & pred_class == 1) %>% select(Freq)
-    return(TN / (TN + FP))
+    dt <- table(df[, 1:2])
+    dt[1, 1] / sum(dt[1, ])
   }
 }
 ```
 
-```{r specificity_check}
-sprintf("The specificity of the predictions for the classification data set is %0.3f.", 
-specificity(class_data))
-```
+For this dataset the specificity is
+`r prettyNum(SPC(class_data) * 100, digits = 5L)`%.
 
 ### F1 Score of the Predictions
 
@@ -220,7 +220,7 @@ f1_score = function(df) {
   if (is.data.frame(df) == FALSE) {
     return("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    return((2*precision(df)*sensitivity(df)) / (precision(df) + sensitivity(df)))
+    return((2 * PRC(df) * SNS(df)) / (PRC(df) + SNS(df)))
   }
 }
 ```
