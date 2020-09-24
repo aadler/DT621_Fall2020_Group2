@@ -209,25 +209,25 @@ SPC <- function(df) {
 For this dataset the specificity is
 `r prettyNum(SPC(class_data) * 100, digits = 5L)`%.
 
-### F1 Score of the Predictions
+# 8. \(F_1\) Score
+The function `F1` below takes as input a data frame whose first two columns
+are the true class and the modeled class respectively. It returns the
+\(F_1\) score of the predictions using the following formula:
 
-Function `f1_score` that takes the data set as a dataframe, with actual and predicted classifications identified, and returns the F1 score of the predictions. The formula is:
+\[
+\textrm{F}_1\;\textrm{Score} = \frac{2 \times \textrm{Precision} \times
+\textrm{Sensitivity}}{\textrm{Precision} + \textrm{Sensitivity}}
+\]
 
-\[\text{F1 Score} = \frac{2 \times Precision \times Sensitivity}{Precision + Sensitivity}\]
-
-```{r f1_score, echo = TRUE}
-f1_score = function(df) {
-  if (is.data.frame(df) == FALSE) {
-    return("Data set is not a dataframe. Try as.data.frame(dataset).")
+```{r f1}
+F1 <- function(df) {
+  if (!is.data.frame(df)) {
+    stop("Data set is not a dataframe. Try as.data.frame(dataset).")
   } else {
-    return((2 * PRC(df) * SNS(df)) / (PRC(df) + SNS(df)))
+    (2 * PRC(df) * SNS(df)) / (PRC(df) + SNS(df))
   }
 }
 ```
 
-```{r f1_score_check}
-sprintf("The F1 score of the predictions for the classification data set is %0.3f.", 
-f1_score(class_data))
-```
-
-
+For this dataset the \(F_1\) score is
+`r prettyNum(F1(class_data) * 100, digits = 5L)`%.
