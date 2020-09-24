@@ -113,8 +113,9 @@ For this dataset the accuracy is
 
 # 4. Classification Error Rate
 The function `CER` below takes as input a data frame whose first two columns
-are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
-classification error rate of the predictions using the following formula:
+are the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the classification error rate of the predictions using
+the following formula:
 
 \[
 \textrm{Classification Error Rate} = \frac{FP + FN}{TP + FP + TN + FN}
@@ -141,8 +142,9 @@ Mathematically, the classification error rate must be identical to
 
 # 5. Precision
 The function `PRC` below takes as input a data frame whose first two columns
-are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
-classification error rate of the predictions using the following formula:
+are the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the classification error rate of the predictions using
+the following formula:
 
 \[
 \textrm{Precision} = \frac{TP}{TP + FP}
@@ -163,8 +165,9 @@ For this dataset the precision is
 
 # 6. Sensitivity or Recall
 The function `SNS` below takes as input a data frame whose first two columns
-are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
-sensitivity of the predictions using the following formula:
+are the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the sensitivity of the predictions using the following
+formula:
 
 \[
 \textrm{Sensitivity} = \frac{TP}{TP + FN}
@@ -185,8 +188,9 @@ For this dataset the sensitivity is
 
 # 7. Specificity
 The function `SPC` below takes as input a data frame whose first two columns
-are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
-specificity of the predictions using the following formula:
+are the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the specificity of the predictions using the following
+formula:
 
 \[
 \textrm{Specificity} = \frac{TN}{TN + FP}
@@ -207,8 +211,9 @@ For this dataset the specificity is
 
 # 8. \(F_1\) Score
 The function `F1` below takes as input a data frame whose first two columns
-are the true class and the modeled class and named `class` and `pred_class` respectively. It returns the
-\(F_1\) score of the predictions using the following formula:
+are the true class and the modeled class and named `class` and `pred_class`
+respectively. It returns the \(F_1\) score of the predictions using the
+following formula:
 
 \[
 \textrm{F}_1\;\textrm{Score} = \frac{2 \times \textrm{Precision} \times
@@ -274,9 +279,14 @@ assumptions. Therefore, excepting the degenerate case where both are 0,
 this completed the proof the fraction too is bounded by \([0, 1]\). ***QED***
 
 10. ROC Curve
-The ROC curve is defined as a plot of the true positive rate against the false
-positive rate at different probability thresholds. The false positive rate is
-usually plotted on the x-axis.
+The receiver operating curve (ROC) is defined as a plot of the true positive
+rate (TPR) against the false positive rate (FPR) at different probability
+thresholds. The FPR is usually plotted on the x-axis. The function below takes
+as input a data frame with columns named `class` and `pred_class` as above, and
+a third column named `pred_prob` which reflects the predicted probability of
+being positive. It then steps along a sequence from 0 to 1, assigning classes
+based on that sequence, calculating the TPR and FPR for each threshold, plotting
+the results when completed. Lastly, it calculates the area under the ROC (AUC).
 
 ```{r ROC}
 ROC <- function(df) {
@@ -293,7 +303,8 @@ ROC <- function(df) {
       rocTable$x[i] <- 1 - SPC(dftmp)
       rocTable$y[i] <- SNS(dftmp)
     }
-    plot(rocTable$x, rocTable$y, type = 'l')
+    plot(rocTable$x, rocTable$y, type = 'l', xlab = "False Positive Rate",
+         ylab = 'True Positive Rate')
   }
 }
 ```
