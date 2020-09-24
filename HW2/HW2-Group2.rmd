@@ -321,3 +321,43 @@ The ROC and AUC for the dataset provided is shown below:
 ROC(class_data)
 ```
 
+# 11. Metric Production
+All the metrics were displayed in their sections, but will be reproduced here
+as well.
+
+```{r sec11}
+ACC(class_data)
+CER(class_data)
+PRC(class_data)
+SNS(class_data)
+SPC(class_data)
+F1(class_data)
+ROC(class_data)
+```
+
+# 12. Using the `caret` package
+
+```{r caret}
+library(caret)
+confusionMatrix(as.factor(class_data$pred_class),
+                as.factor(class_data$class),
+                positive = '1')
+# Precision
+posPredValue(as.factor(class_data$pred_class),
+            as.factor(class_data$class),
+            positive = '1')
+# Sensitivity
+sensitivity(as.factor(class_data$pred_class),
+            as.factor(class_data$class),
+            positive = '1')
+# Specificity
+specificity(as.factor(class_data$pred_class),
+            as.factor(class_data$class),
+            negative = '0')
+```
+
+As can be seen above, when the functions are called with proper identification
+of the negative and positive cases, our results match the `caret` package
+results.
+
+# 13.
