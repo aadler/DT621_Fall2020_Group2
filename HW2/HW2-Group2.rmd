@@ -47,7 +47,7 @@ and compares it to the actual outcomes in the data. The matrix is
 \(N \times N\), where \(N\) is the number of target values. The following table
 displays a \(2\times 2\) confusion matrix for two classes---positive and
 negative. The actual confusion matrix are the 4 cells containing `a`, `b`, `c`,
-and `d`. The enhancments around the matrix display the definitions for many
+and `d`. The enhancements around the matrix display the definitions for many
 common classification metrics.
 
 ```{r confMatrixDesc, echo=FALSE}
@@ -231,3 +231,48 @@ F1 <- function(df) {
 
 For this dataset the \(F_1\) score is
 `r prettyNum(F1(class_data) * 100, digits = 5L)`%.
+
+# 9. Bounds on \(F_1\)
+## Proof 1
+We can prove this by decomposing the metrics into their component parts as
+defined above.
+\[
+\begin{align}
+F_{1:numerator} &= 2 \cdot P \cdot S\\
+&= 2 \cdot \frac{TP}{TP + FP} \cdot \frac{TP}{TP + FN}\\
+&= \frac{2\cdot(TP)^2}{(TP+FP)(TP+FN)}\\
+F_{1:denominator} &= P + S\\
+&= \frac{TP}{TP + FP} + \frac{TP}{TP + FN}\\
+&= \frac{TP(TP + FN) + TP(TP+FP)}{(TP+FP)(TP+FN)}\\
+&= \frac{(TP)^2 + TP\cdot FN + (TP)^2 + TP\cdot FP}{(TP+FP)(TP+FN)}\\
+&= \frac{2\cdot(TP)^2 + TP\cdot (FN + FP)}{(TP+FP)(TP+FN)}\\\
+F_1 &= \frac{F_{1:numerator}}{F_{1:denominator}}\\
+&= \frac{2\cdot(TP)^2}{2\cdot(TP)^2 + TP\cdot (FN + FP)}\\
+&= \frac{2\cdot TP}{2\cdot TP + FN + FP}
+\end{align}
+\]
+
+Now this last equation ***must*** be bounded between 0 and 1. Consider that TP
+is a non-negative integer. Also, the sum of TP, FP, TN, and FN must equal the
+number of observations. Excluding the degenerate case where the dataset contains
+only negative classes and they were all scored properly, the denominator will
+always be positive. When the dataset consists of only positive classes and they
+are all coded properly, we have \(F_1 = 1\). This is also why there isn't too
+much to worry about with the all-negative case, as one can simply switch the
+labels and side-step the division by zero error. In every other case where TP
+is strictly less than the number of observations, there must be entries in
+FN or FP. This causes the fraction to be less than one. In the case where no
+positive entries are coded properly, then the numerator is 0 and the denominator
+is > 0, so the \(F_1\) score is 0. As the building blocks all represent counts,
+they cannot be negative, so the score can never fall below 0. ***QED***
+
+## Proof 2
+Another proof relies on the assumption that the sensitivity and precision
+themselves are constrained to \([0, 1]\). Given those assumptions, it ***must***
+be true that \(2ab < a + b\). This is a corollary of the
+[*AM-GM inequality*](https://en.wikipedia.org/wiki/Inequality_of_arithmetic_and_geometric_means)
+since if \(a, b \in [0, 1]\) then \(\sqrt{ab} > ab\) and this inequality is
+strict. Thus the numerator must be strictly less than the denominator. Both
+numerator and denominator are bounded by \([0, 1]\) as per the initial
+assumptions. Therefore, excepting the degenerate case where both are 0,
+this completed the proof the fraction too is bounded by \([0, 1]\). ***QED***
