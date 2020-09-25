@@ -1,0 +1,217 @@
+---
+title: "shamp_ensemble_model"
+author: "Jeff Shamp"
+date: "9/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(stacks)
+library(kernlab)
+library(vip)
+set.seed(9450)
+```
+
+
+```{r}
+crime_df<- read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW3/data/crime-training-data_modified.csv")
+crime_df<- as.tbl(crime_df)
+```
+
+
+```{r}
+crime_df<-
+  crime_df %>% 
+  mutate(target = as.factor(target)) %>% 
+  mutate_if(is.integer, as.numeric)
+
+data_split <- initial_split(crime_df, 
+                            strata = target, 
+                            prop = 0.8)
+train_df<- training(data_split)
+test_df<- testing(data_split)
+```
+
+```{r}
+cv_folds<- vfold_cv(train_df,
+                    v = 5, repeats = 1)
+
+crime_recipe<- 
+  recipe(target ~., data=train_df)
+
+
+crime_wf<- 
+  workflow() %>%
+  add_recipe(crime_recipe)
+
+crtl_grid<- control_stack_grid()
+```
+
+
+```{r}
+logit_specs<- 
+  logistic_reg(
+    penalty = tune(),
+    mixture = tune()
+    ) %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+svm_specs<- 
+  svm_rbf(
+    cost = tune(),
+    rbf_sigma = tune(),
+    margin = tune()
+  ) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+```
+
+```{r}
+svm_wf<-
+  crime_wf %>%
+  add_model(svm_specs)
+
+svm_results<-
+  tune_grid(
+    svm_wf, 
+    resample = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    # save_pred = TRUE, 
+    # save_workflow = FALSE
+  )
+
+logit_wf<- 
+  crime_wf %>%
+  add_model(logit_specs)
+
+logit_results<-
+  tune_grid(
+    logit_wf,
+    resamples = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    # save_pred = TRUE, 
+    # save_workflow = FALSE
+)
+```
+
+
+
+```{r}
+crime_model_stack <- 
+  stacks() %>%
+  add_candidates(logit_results) %>%
+  add_candidates(svm_results) %>%
+  blend_predictions() %>%
+  fit_members()
+
+crime_model_stack
+```
+
+We see that the logistic classifier is the top weight in the blended model, with the support vector machine...supporting the classification results. 
+
+```{r}
+theme_set(theme_bw())
+autoplot(crime_model_stack)
+```
+
+
+
+```{r}
+crime_pred <- 
+  test_df %>%
+  bind_cols(predict(crime_model_stack, ., type = "prob"), 
+            predict(crime_model_stack, ., type = "class"))
+```
+
+Computing the ROC AUC for the model:
+
+```{r, eval = FALSE}
+roc<- yardstick::roc_auc(
+  crime_pred,
+  truth = target,
+  contains(".pred_1")
+  )
+
+acc<- yardstick::accuracy(
+  crime_pred, 
+  truth = target, 
+  estimate = .pred_class
+)
+
+recall<- yardstick::recall(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+
+precise<- yardstick::precision(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+metrics_df<-
+  bind_rows(roc, acc, recall, precise)
+
+crime_pred %>%
+  conf_mat(truth = target, estimate = .pred_class)
+```
+
+
+
+
+```{r}
+metrics_df
+```
+
+```{r}
+logit_wf %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+
+logit_wf %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='red4'))
+```
+
+
+```{r}
+eval_df<- read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW3/data/crime-evaluation-data_modified.csv")
+eval_df<-as.tbl(eval_df)
+```
+
+
+
+```{r}
+eval_pred <- 
+  eval_df %>%
+  bind_cols(predict(crime_model_stack, ., type = "prob"), 
+            predict(crime_model_stack, ., type = "class"))
+```
+
+
+
+```{r}
+bind_cols(
+eval_pred %>%
+  filter(.pred_class == 0) %>%
+  count(name = "negative"),
+eval_pred %>%
+  filter(.pred_class ==1) %>%
+  count(name = "positive")
+)
+```
+
+
+
