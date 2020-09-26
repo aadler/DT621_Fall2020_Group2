@@ -23,9 +23,12 @@ set.seed(9450)
 
 ```{r}
 crime_df<- read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW3/data/crime-training-data_modified.csv")
-crime_df<- as.tbl(crime_df)
+crime_df<- as_tibble(crime_df)
 ```
 
+## Model Specifics and Training Scheme
+
+We will split the training data into two sets and perform a cross validation scheme on the models to tune parameters for optimum performance. Once we have the best models we will blend the logistic regression with another top model to boost performance. 
 
 ```{r}
 crime_df<-
@@ -40,9 +43,11 @@ train_df<- training(data_split)
 test_df<- testing(data_split)
 ```
 
+Cross validation and workflow creation. 
+
 ```{r}
 cv_folds<- vfold_cv(train_df,
-                    v = 5, repeats = 1)
+                    v = 10, repeats = 1)
 
 crime_recipe<- 
   recipe(target ~., data=train_df)
@@ -55,6 +60,7 @@ crime_wf<-
 crtl_grid<- control_stack_grid()
 ```
 
+Specify the models. Using SVM as another model to blend with the logistic. 
 
 ```{r}
 logit_specs<- 
@@ -65,6 +71,15 @@ logit_specs<-
   set_engine("glm") %>%
   set_mode("classification")
 
+# rf_specs<-
+#   rand_forest(
+#     min_n = tune(),
+#     mtry = tune(),
+#     trees = tune()
+#   ) %>%
+#   set_engine("ranger") %>%
+#   set_mode("classification")
+
 svm_specs<- 
   svm_rbf(
     cost = tune(),
@@ -74,6 +89,8 @@ svm_specs<-
   set_mode("classification") %>%
   set_engine("kernlab")
 ```
+
+Tuning the models for best parameters. The stack function will cherry pick the models that best optimize the blended final model. 
 
 ```{r}
 svm_wf<-
@@ -86,8 +103,8 @@ svm_results<-
     resample = cv_folds,
     control = crtl_grid,
     grid = 10,
-    # save_pred = TRUE, 
-    # save_workflow = FALSE
+    save_pred = TRUE,
+    save_workflow = FALSE
   )
 
 logit_wf<- 
@@ -100,12 +117,24 @@ logit_results<-
     resamples = cv_folds,
     control = crtl_grid,
     grid = 10,
-    # save_pred = TRUE, 
-    # save_workflow = FALSE
+    save_pred = TRUE,
+    save_workflow = FALSE
 )
+
+# rf_wf<-
+#   crime_wf %>%
+#   add_model(rf_specs)
+# 
+# rf_results<-
+#   tune_grid(
+#     rf_wf, 
+#     resamples = cv_folds,
+#     control = crtl_grid, 
+#     grid =10
+#   )
 ```
 
-
+Blend!
 
 ```{r}
 crime_model_stack <- 
@@ -134,9 +163,9 @@ crime_pred <-
             predict(crime_model_stack, ., type = "class"))
 ```
 
-Computing the ROC AUC for the model:
+Computing the metrics for the stacked model:
 
-```{r, eval = FALSE}
+```{r}
 roc<- yardstick::roc_auc(
   crime_pred,
   truth = target,
@@ -174,6 +203,19 @@ crime_pred %>%
 metrics_df
 ```
 
+### Sub-Models
+
+The blended model is comprised of two sub-models, the logistic and the SVM. Below are the prediction results for each sub-model. 
+
+```{r}
+best_model_metric <- select_best(svm_results, "accuracy")
+finalize_workflow(svm_wf, best_model_metric) %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+```
+
+
+
 ```{r}
 logit_wf %>%
   last_fit(data_split) %>%
@@ -184,7 +226,9 @@ logit_wf %>%
   pull_workflow_fit() %>%
   vip(geom = "col", aesthetics = list(fill='red4'))
 ```
+We see that they are both in the low eighties percent for accuracy, and low nineties for roc auc. Together make for a better overall prediction. 
 
+## Test Predictions
 
 ```{r}
 eval_df<- read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW3/data/crime-evaluation-data_modified.csv")
