@@ -1,0 +1,42 @@
+---
+title: "HW 3_Bryan"
+author: "Bryan Persaud"
+date: "10/6/2020"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(kableExtra)
+library(corrplot)
+```
+
+```{r}
+train_crime <- read.csv("https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/HW3/data/crime-training-data_modified.csv")
+```
+
+# Data Exploration
+
+```{r}
+summary(train_crime) %>%
+  kable() %>%
+  kable_styling()
+```
+
+```{r}
+sapply(train_crime, function(x) 
+  sum(is.na(x)))
+```
+
+There are no missing data in the dataset.
+
+```{r}
+correlation <- cor(train_crime)
+correlation
+```
+
+```{r}
+corrplot(correlation, diag = FALSE)
+```
+
+A correlation matrix and plot helps to see which variables are more related to each other than others.
