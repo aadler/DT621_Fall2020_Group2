@@ -1,12 +1,12 @@
 ---
 title: "DATA 621 - Business Analytics and Data Mining"
-author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, Bryan Persaud,
-  Jeff Shamp
+subtitle: 'Fall 2020 - Group 2 - Homework #2'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, Bryan
+  Persaud, Jeff Shamp
 date: "10/11/2020"
 output:
-  html_document: default
   pdf_document: default
-subtitle: 'Fall 2020 - Group 2 - Homework #2'
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -43,9 +43,9 @@ the number of correct and incorrect predictions made by the classification model
 and compares it to the actual outcomes in the data. The matrix is
 \(N \times N\), where \(N\) is the number of target values. The following table
 displays a \(2\times 2\) confusion matrix for two classes---positive and
-negative. The actual confusion matrix is the 4 cells containing `a`, `b`, `c`,
-and `d`. The enhancements around the matrix display the definitions for many
-common classification metrics.
+negative. The actual confusion matrix comprises the 4 cells containing `a`, `b`,
+`c`, and `d`. The enhancements around the matrix display the definitions for
+many common classification metrics.
 
 ```{r confMatrixDesc, echo=FALSE}
 cat("----------------------------------------------------------------------------
