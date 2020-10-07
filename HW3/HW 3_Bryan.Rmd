@@ -9,6 +9,8 @@ output: html_document
 library(tidyverse)
 library(kableExtra)
 library(corrplot)
+library(ggplot2)
+library(GGally)
 ```
 
 ```{r}
@@ -40,3 +42,16 @@ corrplot(correlation, diag = FALSE)
 ```
 
 A correlation matrix and plot helps to see which variables are more related to each other than others.
+
+```{r}
+corrplot(correlation, type = "lower", order="hclust", tl.col = "black", tl.srt = 45, method = "number")
+
+```
+
+
+```{r, fig.width=14, fig.height=12}
+ggpairs(as.data.frame(correlation), lower = list(continuous = "points", combo = "facethist", discrete = "facetbar", na =
+    "na"))
+
+```
+
