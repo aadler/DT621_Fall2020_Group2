@@ -7,6 +7,7 @@ date: "10/11/2020"
 output:
   pdf_document: default
   html_document: default
+urlcolor: purple  
 ---
 
 ```{r setup, include=FALSE}
