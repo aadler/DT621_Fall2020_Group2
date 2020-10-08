@@ -1,0 +1,141 @@
+---
+title: "Blog Post 5: The Value of Cross Validation & Hyperparameter Tuning"
+subtitle: "DT 621---Fall 2020"
+author: "Avraham Adler"
+date: "10/8/2020"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, error=FALSE)
+```
+
+# What is Cross-Validation?
+We saw in [previous blog posts](https://rpubs.com/Avraham/DT621Blog2) that
+splitting data into training and testing sets helps to prevent overfitting. In
+this post, we will demonstrate another method that can be used both separately
+and in conjunction with holdout sets: **cross-validation**.
+
+Cross validation is the process by which multiple models are fit to the same
+data, each time holding out a different subset of that data. Unlike true holdout
+methods, every data point is in at least one model being compared. However. this
+does allow for a range of pseudo-holdout data which may better address
+overfitting.
+
+The most common types of cross validation are the *k-fold* and the
+*leave-one-out* (LOO). The k-fold breaks the data into \(k\) partitions of
+approximately the same size, and trains \(k\) models, each time leaving out a
+different fold. LOOCV is k-fold taken to its extreme, where each fold is
+composed of one data point. So if there are \(n\) observations there will be
+\(n\) models.
+
+The two overfitting prevention methods may be combined. One can sequester a
+true holdout set for final model comparison and use cross-validation on the
+training set for better overfitting behavior. One can even go so far as to split
+the data into **three** sections: a true *test* set, a *validation* set on which
+one can check the results of hyperparameter tuning, and the *train* set used to
+fit the model including cross-validation.
+
+# What is Hyperparamter Tuning?
+Hyperparameters in machine learning usually refer to model-specific parameters
+which are independent of the data. For example, the \(\lambda\) used in lasso
+or ridge regression is a hyperparameter. The number of neighbors \(k\) is a
+hyperparameter. Often, careful selection of these values can result in a model
+with increased sensitivity to the data
+
+# Demonstration
+For this blog post we will use the `cars` dataset from the `caret` package, and
+compare the results of using cross validation in the training phase. We will not
+perform any EDA or preprocessing for the purpose of this post. We will train two
+sets of models. We will select a "future" set of around 25% of the data to
+reflect true unobserved data. We will split the remaining data into training and
+testing at about a 70/30 ratio.
+
+The first set of models will train on the entire available training set and the
+best performing model on the test set will be selected. The second set will do
+the same, but will include 5-fold cross validation and hyperparameter tuning as
+part of the training The decision metric will be RMSE.
+
+```{r prepareData}
+library(caret)
+data(cars)
+set.seed(84)
+futIDX <- createDataPartition(cars$Price, p = 0.25)$Resample1
+futDat <- cars[futIDX, ]
+curDat <- cars[-futIDX, ]
+tstIDX <- createDataPartition(curDat$Price[-futIDX], p = 0.3)$Resample1
+trnDat <- curDat[-tstIDX, ]
+tstDat <- curDat[tstIDX, ]
+```
+
+# Model Training
+For a serious project, one-pass tuning would be insufficient. The results of
+each run would be used to fine-tune the parameters.
+
+## ElasticNet
+```{r enFit}
+trc <- trainControl(method = 'none')
+set.seed(245)
+en1 <- train(Price ~ ., data = tstDat, method = 'glmnet', trControl = trc)
+trc <- trainControl(method = 'cv', number = 5)
+en2 <- train(Price ~ ., data = tstDat, method = 'glmnet', trControl = trc)
+en1p <- predict(en1, tstDat)
+en2p <- predict(en2, tstDat)
+```
+
+## Cubist
+```{r cubFit}
+trc <- trainControl(method = 'none')
+tg <- expand.grid(committees = 1L, neighbors = 0)
+set.seed(245)
+cb1 <- train(Price ~ ., data = tstDat, method = 'cubist', trControl = trc,
+             tuneGrid = tg)
+trc <- trainControl(method = 'cv', number = 5)
+set.seed(245)
+cb2 <- train(Price ~ ., data = tstDat, method = 'cubist', trControl = trc)
+cb1p <- predict(cb1, tstDat)
+cb2p <- predict(cb2, tstDat)
+```
+
+# Model Selection
+## Models Trained on All the Data
+```{r MS1}
+modRes <- cbind(data.frame(Model = c("EN", "EN-CV", "Cubist", "Cubist-CV")),
+                rbind(defaultSummary(data.frame(obs = tstDat$Price, pred = en1p)),
+                      defaultSummary(data.frame(obs = tstDat$Price, pred = en2p)),
+                      defaultSummary(data.frame(obs = tstDat$Price, pred = cb1p)),
+                      defaultSummary(data.frame(obs = tstDat$Price, pred = cb2p))
+                      )
+                )
+knitr::kable(modRes, digits = 3L, caption = "Results on Training Set")
+```
+
+It is clear that cross-validation helps each time. The ability to compare
+different tuning parameters has an extraordinary effect on the rules-based model
+tree (`Cubist`). This last model would clearly be the one selected.
+
+# Future Test
+We will show results for all four models.
+```{r MS2}
+futRes <- cbind(data.frame(Model = c("EN", "EN-CV", "Cubist", "Cubist-CV")),
+                rbind(defaultSummary(data.frame(obs = futDat$Price,
+                                                pred = predict(en1, futDat))),
+                      defaultSummary(data.frame(obs = futDat$Price,
+                                                pred = predict(en2, futDat))),
+                      defaultSummary(data.frame(obs = futDat$Price,
+                                                pred = predict(cb1, futDat))),
+                      defaultSummary(data.frame(obs = futDat$Price,
+                                                pred = predict(cb2, futDat)))
+                      )
+                )
+knitr::kable(futRes, digits = 3L, caption = "Results on 'Future' Set")
+```
+
+As expected, using both cross validation and hyperparameter tuning enhanced the
+accuracy of both sets of models. It is also gratifying to see that the single
+model we would have used was the most performant.
+
+A real-world exercise would have started with significant EDA, have used more
+models, and would have continued with more precise hyperparameter tuning.
