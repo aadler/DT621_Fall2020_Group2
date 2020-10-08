@@ -65,9 +65,9 @@ set.seed(84)
 futIDX <- createDataPartition(cars$Price, p = 0.25)$Resample1
 futDat <- cars[futIDX, ]
 curDat <- cars[-futIDX, ]
-tstIDX <- createDataPartition(curDat$Price[-futIDX], p = 0.3)$Resample1
-trnDat <- curDat[-tstIDX, ]
-tstDat <- curDat[tstIDX, ]
+trnIDX <- createDataPartition(curDat$Price, p = 0.7)$Resample1
+trnDat <- curDat[trnIDX, ]
+tstDat <- curDat[-trnIDX, ]
 ```
 
 # Model Training
