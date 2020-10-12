@@ -14,6 +14,10 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 library(tidyverse)
+library(tidymodels)
+library(stacks)
+library(kernlab)
+library(vip)
 library(summarytools)
 library(corrplot)
 library(knitr)
@@ -29,6 +33,8 @@ fileTrain = "crime-training-data_modified.csv"
 fileTest = "crime-evaluation-data_modified.csv"
 
 df = read.csv(paste0(urlRemote, pathGithub, fileTrain))
+df<- as_tibble(df)
+
 eval = read.csv(paste0(urlRemote, pathGithub, fileTest))
 ```
 
@@ -214,6 +220,134 @@ Let's take a look at the *signs* of the coefficients. We can see that the coeffi
   
 The rest of the variables have positive coefficients. Many of these are expected. For example, in our exploratory data analysis, we noticed that the `nox` variable (nitrogen oxides concentration (parts per 10 million)) has the greatest positive correlation with the target variable. This is surprising; we hadn't thought that the nitrogen oxide concentration would have as large of an impact on the crime rate, but some quick googling shows us that there may actually be a relationship. ( [https://www.sciencedaily.com/releases/2019/10/191003114007.htm](Source) ) 
 
+## Model 2
+### Stacked Classifier
+
+```{r}
+cv_folds<- vfold_cv(train_df,
+                    v = 10, repeats = 1)
+
+crime_recipe<- 
+  recipe(target ~., data=train_df)
+
+
+crime_wf<- 
+  workflow() %>%
+  add_recipe(crime_recipe)
+
+crtl_grid<- control_stack_grid()
+```
+
+Specify the models. Using SVM as another model to blend with the logistic. 
+
+```{r}
+logit_specs<- 
+  logistic_reg(
+    penalty = tune(),
+    mixture = tune()
+    ) %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+svm_specs<- 
+  svm_rbf(
+    cost = tune(),
+    rbf_sigma = tune(),
+    margin = tune()
+  ) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+```
+
+Tuning the models for best parameters. The stack function will cherry pick the models that best optimize the blended final model. 
+
+```{r}
+svm_wf<-
+  crime_wf %>%
+  add_model(svm_specs)
+
+svm_results<-
+  tune_grid(
+    svm_wf, 
+    resample = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    save_pred = TRUE,
+    save_workflow = FALSE
+  )
+
+logit_wf<- 
+  crime_wf %>%
+  add_model(logit_specs)
+
+logit_results<-
+  tune_grid(
+    logit_wf,
+    resamples = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    save_pred = TRUE,
+    save_workflow = FALSE
+)
+
+```
+
+Blend!
+
+```{r}
+crime_model_stack <- 
+  stacks() %>%
+  add_candidates(logit_results) %>%
+  add_candidates(svm_results) %>%
+  blend_predictions() %>%
+  fit_members()
+
+crime_model_stack
+```
+
+```{r}
+crime_pred <- 
+  test_df %>%
+  bind_cols(predict(crime_model_stack, ., type = "prob"), 
+            predict(crime_model_stack, ., type = "class"))
+```
+
+Computing the metrics for the stacked model:
+
+```{r}
+roc<- yardstick::roc_auc(
+  crime_pred,
+  truth = target,
+  contains(".pred_1")
+  )
+
+acc<- yardstick::accuracy(
+  crime_pred, 
+  truth = target, 
+  estimate = .pred_class
+)
+
+recall<- yardstick::recall(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+
+precise<- yardstick::precision(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+metrics_df<-
+  bind_rows(roc, acc, recall, precise)
+
+crime_pred %>%
+  conf_mat(truth = target, estimate = .pred_class)
+```
+
+```{r}
+metrics_df
+```
 
 # SELECT MODELS
 ## Criteria
@@ -265,6 +399,35 @@ m1_metrics_df
 
 
 ```
+
+### Sub-Models and Coefficient Discussion
+
+The blended model is comprised of two sub-models, the logistic and the SVM. Below are the prediction results for each sub-model. 
+
+```{r}
+best_model_metric <- select_best(svm_results, "accuracy")
+finalize_workflow(svm_wf, best_model_metric) %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+```
+
+
+
+```{r}
+logit_wf %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+
+logit_wf %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='red4'))
+```
+
+We see that they are both in the low eighties percent for accuracy, and low nineties for roc auc. Together make for a better overall prediction. 
+
+We again see that the primary predictor in the logistic regression is the `nox` with `rad` and `ptratio` rounding out the top three predictors. This is in line with the base model. Living close to the center of town, having teachers, and not having polluted air are the largest predictors in terms of above median crime. 
+
 
 # APPENDIX
 The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
