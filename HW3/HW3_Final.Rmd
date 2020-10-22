@@ -24,6 +24,7 @@ library(knitr)
 library(rsample) # model 1 libraries
 library(caret)
 library(e1071)
+library(geoR)
 
 set.seed(9450)
 
@@ -157,6 +158,59 @@ corrplot(round(M,1), method = "color", col = col(200),
 ```
 
 # DATA PREPARATION 
+
+The variable `chas` will be removed due to having statistically insignificant correlation with almost all the variables in the dataset.
+
+```{r}
+new_df <- dplyr::select(df, -chas)
+```
+
+The lower outliers at the lower 1.5 IQR will be capped at the 5th percentile while the higher outliers at the upper 1.5 IQR will be capped at the 95th percentile.
+
+```{r}
+id <- c(1:12)
+for (value in id) {
+  quantiles <- quantile(new_df[,value], probs = c(.25, .75), na.rm = TRUE)
+  caps <- quantile(new_df[,value], probs = c(.05, .95), na.rm = T)
+  H <- 1.5 * IQR(new_df[,value], na.rm = T)
+  new_df[,value][new_df[,value] < (quantiles[1] - H)] <- caps[1]
+  new_df[,value][new_df[,value] > (quantiles[2] + H)] <- caps[2]
+}
+```
+
+We will use Boxcox for variables that are skewed.
+
+```{r}
+boxcoxfit(new_df$age)
+boxcoxfit(new_df$lstat)
+```
+
+The boxcox suggest a transformation of 1.318 for age and 0.233 for lstat.
+
+```{r}
+new_df$age <- new_df$age ^ 1.318
+new_df$lstat <- new_df$lstat ^ 0.233
+```
+
+
+```{r}
+boxcoxfit(new_df$rm)
+```
+
+The boxcox suggests a transformation of 0.204 for rm.
+
+```{r}
+new_df$rm <- new_df$rm ^ 0.204
+```
+
+Plot to see the affects of the transformations.
+
+```{r}
+hist_age <- ggplot(new_df, aes(age)) + geom_histogram()
+hist_lstat <- ggplot(new_df, aes(lstat)) + geom_histogram()
+hist_rm <- ggplot(new_df, aes(rm)) + geom_histogram()
+grid.arrange(hist_age, hist_lstat, hist_rm)
+```
 
 # BUILD MODELS
 
