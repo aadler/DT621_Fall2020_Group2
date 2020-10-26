@@ -1,0 +1,517 @@
+---
+title: "DATA 621 - Business Analytics and Data Mining"
+subtitle: 'Fall 2020 - Group 2 - Homework #3'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "10/11/2020"
+output:
+  pdf_document: default
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r loadData, include=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(stacks)
+library(kernlab)
+library(vip)
+library(summarytools)
+library(corrplot)
+library(knitr)
+library(rsample) # model 1 libraries
+library(caret)
+library(e1071)
+library(geoR)
+
+set.seed(9450)
+
+urlRemote  = "https://raw.githubusercontent.com/"
+pathGithub = "aadler/DT621_Fall2020_Group2/master/HW3/data/"
+fileTrain = "crime-training-data_modified.csv"
+fileTest = "crime-evaluation-data_modified.csv"
+
+df <- read.csv(paste0(urlRemote, pathGithub, fileTrain))
+df <- as_tibble(df)
+eval <- read.csv(paste0(urlRemote, pathGithub, fileTest))
+```
+
+
+# DATA EXPLORATION
+## Data Description
+
+The training data set contains 466 records summarizing attributes of various
+neighborhoods in the city of Boston. The response variable is coded such that it
+is `1` when the neighborhood’s crime rate is above the median and `0` when it is
+not. In all, there are 12 predictors. These include:
+
+Predictor Variables|Description   
+-|----
+zn | proportion of residential land zoned for large lots (over 25000 square feet) 
+indus | proportion of non-retail business acres per suburb  
+chas | a dummy var. for whether the suburb borders the Charles River (1) or not (0)
+nox | nitrogen oxides concentration (parts per 10 million) 
+rm | average number of rooms per dwelling   
+age | proportion of owner-occupied units built prior to 1940   
+dis | weighted mean of distances to five Boston employment centers  
+rad | index of accessibility to radial highways   
+tax | full-value property-tax rate per $10,000 
+ptratio | pupil-teacher ratio by town 
+lstat | lower status of the population (percent) 
+medv | median value of owner-occupied homes in $1000s 
+
+This data set has complete cases, thus there is no need for imputation. Based on
+some common summary statistics, there are more observations where the crime rate
+is below the median. It is already apparent that some of the predictors varies
+depending the crime rate. For instance, there is a noticeable difference in the
+means of `age`, `lstat`, `rad`, and `zn` between the crime rate groups. 
+
+```{r sumstat}
+# DATA EXPLORATION 
+summarystat = stby(data = df, INDICES = df$target, FUN = psych::describe)
+kable(summarystat[[1]][-13,-c(1,7)], 
+      caption = "Descriptive Statistics: Crime Rate > Median", 
+      digit = 2L)
+kable(summarystat[[2]][-13,-c(1,7)], 
+      caption = "Descriptive Statistics: Crime Rate < Median", 
+      digit = 2L)
+```
+
+## Data Distribution
+
+For each predictors, we computed kernel density estimators to understand their
+distribution. The following plots show how predictors are distributed between
+areas where the crime rate is higher than the median (blue) and areas where the
+crime rate is below the median (red). It is of interest to understand variables
+that highlight large variations between the two groups. 
+
+
+
+```{r density}
+# density plots
+var_names <- cbind(names(df), 'factor(target)')
+plot_list <- list()
+for (i in seq_along(names(df))) {
+   p <- ggplot(df, aes_string(x=var_names[i, 1], fill=var_names[i, 2])) +
+                 ggtitle(var_names[i, 1]) +
+                 geom_density(alpha = 0.4, show.legend = FALSE) + 
+                 theme(legend.position = "none",
+                       plot.title = element_text(size = 10, hjust = 0.5),
+                       axis.title.y = element_blank(),
+                       axis.title.x = element_blank())
+   plot_list[i] <- p
+}
+gridExtra::grid.arrange(plot_list[1], plot_list[2], plot_list[3], plot_list[4],
+                        plot_list[5], plot_list[6], plot_list[7], plot_list[8],
+                        plot_list[9], plot_list[10], plot_list[11],
+                        plot_list[12],
+                        layout_matrix = rbind(c(0,1,2), c(3,4,5), c(6,7,8),
+                                              c(9,10,11)))
+```
+
+As a result, the density plots reveal that most is the data is not normal. some variables are heavily right skewed, while others possess multi-model distributions. More specifically, the variable predictor for average number of rooms per dwelling, i.e. `rm`, seems to be the best variable to divide the data into the two groups, since it closely mirrors a normal distribution between groups. Another interesting predictor is `zn`, i.e. proportion of residential land zoned for large lots. It has a significant positive skew (skew = 2.18). Nearly 73% of the observations (339 of 466 total) that have a value of 0. When analyzing the difference between the crime rate groups, it is possible that areas with high crime rate do not have land zoned for large lots. This suggests that suburban areas are likely to have low crime rates because there typically have large lots, whereas urban areas have a higher crime rate since lot size are smaller than 25000 square feet.
+
+
+
+Further visually inspections was conducted using boxplots to highlight how the data is spread for each variable. The graphs show that some variables have a large amount of variance between each other, for example, `zn`, `rad` and `tax`. There are also quite a few values that can be considered outliers within some variables.
+
+```{r boxplot}
+# boxplots 
+df.new = reshape::melt(df, id.vars= "target") %>%
+  dplyr::filter(variable != "chas") %>%
+  mutate(target = as.factor(target))
+ggplot(df.new, aes(x = variable, y = log(value))) + 
+  geom_boxplot(color = "blue", fill = "blue", alpha = 0.2, 
+               notch = TRUE, notchwidth = 0.8, 
+               outlier.colour = "red", outlier.fill = "red", outlier.size = 3) + 
+  stat_summary(fun.y = mean, color = "red", geom = "point", shape = 16, size = 2) + 
+  coord_flip() + 
+  labs(title = "Boxplot of Predictor Variables")
+
+ggplot(df.new, aes(x = variable, y = log(value))) + 
+  geom_boxplot(alpha = 0.5, outlier.colour = "red", 
+               outlier.fill = "red", outlier.size = 2,
+               aes(fill = target)) + 
+  facet_wrap( ~ variable, scales = "free") + 
+  labs(title = "Boxplot of Predictor Variables by Crime Rate") 
+```
+
+## Data Correlation
+
+By looking at a correlation matrix, boxes with blank color indicate that the correlation was not statistically significant. It is evident that many variables are moderately to highly correlated, $\rho > 0.50$. The correlogram below shows that `nox` has a largest positive correlation with `target`, whereas `dis` has a largest negative correlation with `target`. 
+
+There is a  noticeable influence that socio-economic status has on the crime rate of an area. It is well-known that crime is concentrated in disadvantaged, urban neighborhoods in the United States. The economic segregation suggests that affluent neighborhoods may be further away in terms of distance, and as a result, disadvantaged areas are more attractive to crime because the probability of success is higher even if the targets are not as profitable. Consider areas with a higher socio-economics, these areas are correlated have a lower crime rate. Moreover, industrial areas are correlated with higher levels of nitrogen oxide concentrations. This may be an indication of why these areas are less density with residents of a higher status. This trend is also seen with the `ptratio` since a higher ratio means less funding for public institutions, which is common in areas of lower status.
+
+Lastly, it seems that the variable `chas` which indicate whether the suburb borders the Charles River have statistically insignificant correlation with almost all of the other variables except for `medv`, which is poorly positively correlated.
+
+```{r correlation, fig.height=6, fig.width=6}
+# correlations
+cor.df = function(df){
+  df.m = as.matrix(df)
+  n = ncol(df.m)
+  p.mat = matrix(NA, n, n)
+  diag(p.mat) = 0
+  for (i in 1:(n - 1)){
+    for (j in (i + 1):n){
+      tmp = cor.test(df.m[, i], df.m[, j])
+      p.mat[i, j] = p.mat[j, i] = tmp$p.value
+    }
+  }
+  colnames(p.mat) = rownames(p.mat) = colnames(df.m)
+  p.mat
+}
+p.mat = cor.df(df)
+M = cor(df)
+col = colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(round(M,1), method = "color", col = col(200),  
+         type = "lower", order = "hclust", 
+         addCoef.col = "black",
+         tl.col = "black", tl.srt = 45,
+         p.mat = p.mat, sig.level = 0.01, insig = "blank", 
+         diag = FALSE)
+```
+
+# DATA PREPARATION 
+
+The variable `chas` will be removed due to having statistically insignificant correlation with almost all the variables in the dataset.
+
+```{r}
+new_df <- dplyr::select(df, -chas)
+```
+
+The lower outliers at the lower 1.5 IQR will be capped at the 5th percentile while the higher outliers at the upper 1.5 IQR will be capped at the 95th percentile.
+
+```{r}
+id <- c(1:12)
+for (value in id) {
+  quantiles <- quantile(new_df[,value], probs = c(.25, .75), na.rm = TRUE)
+  caps <- quantile(new_df[,value], probs = c(.05, .95), na.rm = T)
+  H <- 1.5 * IQR(new_df[,value], na.rm = T)
+  new_df[,value][new_df[,value] < (quantiles[1] - H)] <- caps[1]
+  new_df[,value][new_df[,value] > (quantiles[2] + H)] <- caps[2]
+}
+```
+
+We will use Boxcox for variables that are skewed.
+
+```{r}
+boxcoxfit(new_df$age)
+boxcoxfit(new_df$lstat)
+```
+
+The boxcox suggest a transformation of 1.318 for age and 0.233 for lstat.
+
+```{r}
+new_df$age <- new_df$age ^ 1.318
+new_df$lstat <- new_df$lstat ^ 0.233
+```
+
+
+```{r}
+boxcoxfit(new_df$rm)
+```
+
+The boxcox suggests a transformation of 0.204 for rm.
+
+```{r}
+new_df$rm <- new_df$rm ^ 0.204
+```
+
+Plot to see the affects of the transformations.
+
+```{r}
+hist_age <- ggplot(new_df, aes(age)) + geom_histogram()
+hist_lstat <- ggplot(new_df, aes(lstat)) + geom_histogram()
+hist_rm <- ggplot(new_df, aes(rm)) + geom_histogram()
+grid.arrange(hist_age, hist_lstat, hist_rm)
+```
+
+# BUILD MODELS
+
+First, we will split the training data into two sets. This will allow us to perform a cross validation scheme on the models to tune parameters for optimum performance. 
+
+```{r tts}
+
+# BUILD MODELS
+# train-test split
+crime_df<-
+  df %>% 
+  mutate(target = as.factor(target)) %>% 
+  mutate_if(is.integer, as.numeric)
+
+data_split <- initial_split(crime_df, 
+                            strata = target, 
+                            prop = 0.8)
+train_df<- training(data_split)
+test_df<- testing(data_split)
+```
+
+## Model 1
+### Base Model
+We will start with a simple logistic regression model to serve as a baseline. This includes
+all variables in the dataset. 
+
+```{r baseModel}
+
+baseModel <- glm(target~., family = binomial, data = train_df)
+
+knitr::kable(summary(baseModel)$coefficients, digits = 3L,
+             caption = 'Base Model Logistic Regression Output')
+
+```
+We can immediately see that a few variables *exceed* the 0.05 p-value threshold
+for significance. 
+
+### Enhanced Model
+We will use **backwards stepwise regression** to remove features that are not statistically significant in predicting the target. The result is a model that includes the following features: `zn`, `nox`, `age`, `dis`, `rad`, `tax`, `ptratio`, `lstat`, and `medv`. 
+
+### Coefficient Discussion
+It is important to note that the coefficients from the model are predicting whether or not the target variable is a **1** (the crime rate is *above* the median value). Additionally, it must be noted that the numeric coefficients are relative to the range of values that the variable encompasses. What this means is that it's possible to have a coefficient that seems small when we look at the absolute magnitude, but that actually has a very strong effect when applied to the data. 
+```{r model1_coeff}
+
+# 10-fold cross validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# train the model on training set
+model1 <- train(target ~ zn+nox+age+dis+rad+tax+ptratio+lstat+medv,
+               data = train_df,
+               trControl = train_control,
+               method = "glm",
+               family=binomial())
+
+
+knitr::kable(summary(model1)$coefficients, digits = 3L,
+             caption = 'Backwards Model Regression Output')
+
+```
+Let's take a look at the *signs* of the coefficients. We can see that the coefficients for the variables `zn` and `tax` are negative. This is indicative of an inverse relationship; ie, the higher these values, the less likely the crime rate is above the median. The relationship for the zone variable aligns with the findings from our initial data exploration. However, the relationship for the tax variable does not; in fact, we saw that there was a positive correlation between the two (as the tax rate increases, so does the probability that the crime rate will be above the median).  
+  
+The rest of the variables have positive coefficients. Many of these are expected. For example, in our exploratory data analysis, we noticed that the `nox` variable (nitrogen oxides concentration (parts per 10 million)) has the greatest positive correlation with the target variable. This is surprising; we hadn't thought that the nitrogen oxide concentration would have as large of an impact on the crime rate, but some quick googling shows us that there may actually be a relationship. ( [https://www.sciencedaily.com/releases/2019/10/191003114007.htm](Source) ) 
+
+## Model 2
+### Stacked Classifier
+
+```{r}
+cv_folds<- vfold_cv(train_df,
+                    v = 10, repeats = 1)
+
+crime_recipe<- 
+  recipe(target ~., data=train_df)
+
+
+crime_wf<- 
+  workflow() %>%
+  add_recipe(crime_recipe)
+
+crtl_grid<- control_stack_grid()
+```
+
+Specify the models. Using SVM as another model to blend with the logistic. 
+
+```{r}
+logit_specs<- 
+  logistic_reg(
+    penalty = tune(),
+    mixture = tune()
+    ) %>%
+  set_engine("glm") %>%
+  set_mode("classification")
+
+svm_specs<- 
+  svm_rbf(
+    cost = tune(),
+    rbf_sigma = tune(),
+    margin = tune()
+  ) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab")
+```
+
+Tuning the models for best parameters. The stack function will cherry pick the models that best optimize the blended final model. 
+
+```{r}
+svm_wf<-
+  crime_wf %>%
+  add_model(svm_specs)
+
+svm_results<-
+  tune_grid(
+    svm_wf, 
+    resample = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    save_pred = TRUE,
+    save_workflow = FALSE
+  )
+
+logit_wf<- 
+  crime_wf %>%
+  add_model(logit_specs)
+
+logit_results<-
+  tune_grid(
+    logit_wf,
+    resamples = cv_folds,
+    control = crtl_grid,
+    grid = 10,
+    save_pred = TRUE,
+    save_workflow = FALSE
+)
+
+```
+
+Blend!
+
+```{r}
+crime_model_stack <- 
+  stacks() %>%
+  add_candidates(logit_results) %>%
+  add_candidates(svm_results) %>%
+  blend_predictions() %>%
+  fit_members()
+
+crime_model_stack
+```
+
+```{r}
+crime_pred <- 
+  test_df %>%
+  bind_cols(predict(crime_model_stack, ., type = "prob"), 
+            predict(crime_model_stack, ., type = "class"))
+```
+
+Computing the metrics for the stacked model:
+
+```{r}
+roc<- yardstick::roc_auc(
+  crime_pred,
+  truth = target,
+  contains(".pred_1")
+  )
+
+acc<- yardstick::accuracy(
+  crime_pred, 
+  truth = target, 
+  estimate = .pred_class
+)
+
+recall<- yardstick::recall(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+
+precise<- yardstick::precision(
+  crime_pred,
+  truth = target, 
+  estimate = .pred_class
+)
+metrics_df<-
+  bind_rows(roc, acc, recall, precise)
+
+crime_pred %>%
+  conf_mat(truth = target, estimate = .pred_class)
+```
+
+```{r}
+metrics_df
+```
+
+# SELECT MODELS
+## Criteria
+
+## Performance 
+
+### Model 1
+```{r model1_perf}
+
+# SELECT MODELS
+# Model 1 Performance
+model1_preds <- predict(model1, test_df, type = "raw")
+model1_probs <- predict(model1, test_df, type = "prob")
+colnames(model1_probs) <- c('pred0', 'pred1')
+
+
+model1_results <- test_df %>%
+  bind_cols(pred = model1_preds, model1_probs)
+
+####### metrics
+m1_roc<- yardstick::roc_auc(
+  model1_results,
+  truth = target,
+  pred0 # select the prob class that corresponds to first level of target
+)
+
+m1_acc<- yardstick::accuracy(
+  model1_results, 
+  truth = target, 
+  estimate = pred
+)
+
+m1_recall<- yardstick::recall(
+  model1_results,
+  truth = target, 
+  estimate = pred
+)
+
+m1_precise<- yardstick::precision(
+  model1_results,
+  truth = target, 
+  estimate = pred
+)
+
+m1_metrics_df<-
+  bind_rows(m1_roc, m1_acc, m1_recall, m1_precise)
+
+m1_metrics_df
+
+
+```
+
+### Sub-Models and Coefficient Discussion
+
+The blended model is comprised of two sub-models, the logistic and the SVM. Below are the prediction results for each sub-model. 
+
+```{r}
+best_model_metric <- select_best(svm_results, "accuracy")
+finalize_workflow(svm_wf, best_model_metric) %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+```
+
+
+
+```{r}
+logit_wf %>%
+  last_fit(data_split) %>%
+  collect_metrics()
+
+logit_wf %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='red4'))
+```
+
+We see that they are both in the low eighties percent for accuracy, and low nineties for roc auc. Together make for a better overall prediction. 
+
+We again see that the primary predictor in the logistic regression is the `nox` with `rad` and `ptratio` rounding out the top three predictors. This is in line with the base model. Living close to the center of town, having teachers, and not having polluted air are the largest predictors in terms of above median crime. 
+
+
+# APPENDIX
+The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
+```{r appendix, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+```{r loadData}
+```
+```{r sumstat}
+```
+```{r density}
+```
+```{r boxplot}
+```
+```{r correlation}
+```
