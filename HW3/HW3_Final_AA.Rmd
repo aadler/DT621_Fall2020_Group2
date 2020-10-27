@@ -3,10 +3,10 @@ title: "DATA 621 - Business Analytics and Data Mining"
 subtitle: 'Fall 2020 - Group 2 - Homework #3'
 author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
     Bryan Persaud, Jeff Shamp
-date: "10/11/2020"
+date: "10/27/2020"
 output:
   pdf_document: default
-
+urlcolor: purple
 ---
 
 ```{r setup, include=FALSE}
@@ -25,9 +25,7 @@ library(corrplot)
 library(knitr)
 library(rsample) # model 1 libraries
 library(caret)
-library(e1071)
 library(geoR)
-
 
 set.seed(9450)
 
@@ -39,8 +37,6 @@ fileTest = "crime-evaluation-data_modified.csv"
 df <- read.csv(paste0(urlRemote, pathGithub, fileTrain))
 nobs <- dim(df)[[1]]
 DT <- as.data.table(df)
-DT[, target := factor(target)]
-# df <- as_tibble(df)
 eval <- read.csv(paste0(urlRemote, pathGithub, fileTest))
 ```
 
@@ -90,7 +86,7 @@ areas where the crime rate is higher than the median (blue) and areas where the
 crime rate is below the median (red). It is of interest to understand variables
 that highlight large variations between the two groups. 
 
-```{r density, fig.width=6}
+```{r density, fig.width=8}
 # density plots
 DT[, IDX := .I]
 DTM <- melt(DT, id.vars = c('IDX', 'target'), measure.vars = 1:12,
@@ -106,15 +102,15 @@ are multi-modal. The most Gaussian of the variables appears to be the one
 related to the average number of rooms per dwelling: `rm`. Another
 interesting predictor is `zn`, the proportion of residential land zoned for
 large lots. Nearly 73% of the observations have a value of 0 with the remaining
-spread widly between 1% and 100%. This may the source of possible distortion. A
+spread widely between 1% and 100%. This may the source of possible distortion. A
 third highly-skewed variable is `chas`, the indicator as to whether the lot
 borders the Charles River. Out of the `r nobs` observations,
 `r sum(DT$chas == 0)` do **not** border the river.
 
 To provide another view, this time highlighting outliers, the data was analyzed
-using boxplos.
+using boxplots.
 
-```{r boxplots, fig.width=6}
+```{r boxplots, fig.width=8}
 # boxplots 
 
 ggplot(DTM, aes(x = metric, y = value)) + 
@@ -141,10 +137,10 @@ suggests that a model will be able to extract signal from the data.
 Below is a corrgram of the data. The shape of the ellipse reflects the strength
 of the correlation and the color represents the direction. Thus, the diagonal
 which represents the perfect correlation of each variable with itself is a blue
-diagional line. The shape and the color scheme reflect the guide at the bottom
+diagonal line. The shape and the color scheme reflect the guide at the bottom
 of the image.
 
-```{r correlation, fig.height=6, fig.width=6}
+```{r correlation, fig.height=5, fig.width=5}
 # correlations
 corrplot(cor(df), method = 'ellipse', type = 'lower', order = 'hclust')
 ```
@@ -152,20 +148,36 @@ corrplot(cor(df), method = 'ellipse', type = 'lower', order = 'hclust')
 Looking at the corrgram, we see that there are many variables which are
 moderately to highly correlated, $\left|\rho\right| > 0.50$. Of note is that
 `nox` has a largest positive correlation with `target` and `dis` has the largest
-negative correlation with `target`. Lastly, it seems that the variable `chas`,
-which indicate whether the suburb borders the Charles River, has statistically
-insignificant correlation with almost all of the other variables.
+negative correlation with `target`. 
+
+Perhaps this is a reflection of the noticeable influence that socio-economic
+status has on the crime rate of an area. It is known that crime is concentrated
+in disadvantaged, urban neighborhoods in the United States. The economic
+segregation suggests that affluent neighborhoods may be further away in terms of
+distance, and as a result, disadvantaged areas are more attractive to crime
+because the probability of success is higher even if the targets are not as
+profitable. Consider areas with a higher socio-economics, these areas are
+correlated have a lower crime rate. Moreover, industrial areas are correlated
+with higher levels of nitrogen oxide concentrations. This may be an indication
+of why these areas are less density with residents of a higher status. This
+trend is also seen with the `ptratio` since a higher ratio means less funding
+for public institutions, which is common in areas of lower status.
+
+Lastly, it seems that the variable `chas`, which indicate whether the suburb
+borders the Charles River, has statistically insignificant correlation with
+almost all of the other variables.
 
 # DATA PREPARATION
-There are no missing values so none need to be imputed.
-Different preparation techniques may be used for differen models.
+There are no missing values so none need to be imputed. Different preparation
+techniques may be used for different models.
+
 ## Models 1 & 2
 The variable `chas` will be removed due to having statistically insignificant\
 correlation with almost all the variables in the dataset. Next, outliers will be
 tempered by capping from below at the 5th percentile and from above at the 95th
 percentile.
 
-```{r, model1_2_adjust}
+```{r model1_2_adjust}
 new_df <- subset(df, select = -chas)
 
 # Cap all observations at their 5th and 95th percentiles
@@ -181,7 +193,7 @@ dens_rmO <- ggplot(new_df, aes(rm)) + geom_density()
 
 ```
 
-The Boxcox transformation will be applied to the `age`, `lstat`, and `rm`
+The Box-Cox transformation will be applied to the `age`, `lstat`, and `rm`
 variables.
 
 ```{r m12BC}
@@ -193,18 +205,18 @@ rmBC <- boxcoxfit(new_df$rm)
 The transform suggests a \(\lambda\) of `r ageBC$lambda` for `age`,
 `r lstatBC$lambda` for `lstat`, and `r rmBC$lambda` for `rm`
 
-```{r, m12applyBC}
+```{r m12applyBC}
 new_df$age <- new_df$age ^ ageBC$lambda
 new_df$lstat <- new_df$lstat ^ lstatBC$lambda
 new_df$rm <- new_df$rm ^ rmBC$lambda
 ```
 
 Below are the densities of the variables prior (left) and post (right) the
-Box-Cox transform. The variables `lstat` and `rm` have benefitted from the
+Box-Cox transform. The variables `lstat` and `rm` have benefited from the
 transform, but the strong bimodality of `age` has not been affected
 significantly.
 
-```{r, m12BC_plot}
+```{r m12BC_plot}
 dens_age <- ggplot(new_df, aes(age)) + geom_density()
 dens_lstat <- ggplot(new_df, aes(lstat)) + geom_density()
 dens_rm <- ggplot(new_df, aes(rm)) + geom_density()
@@ -213,8 +225,17 @@ grid.arrange(dens_ageO, dens_lstatO, dens_rmO, dens_age, dens_lstat, dens_rm,
 ```
 
 ## Model 3
+For model 3, very little data manipulation will be done. There may be valuable
+information in the outliers and a reasonable model may be able to extract
+something from `chas`. However, `chas` will be converted to a factor. Similarly,
+`rad` is an index of accessibility, so it is almost certainly a factor, although
+probably ordered. Given there are now two factors in the predictors, dummy
+dummy variables need to be created. Lastly, the **labels** of `target` will be
+changed from integer to character for compliance with some of R's naming
+conventions. Based on the definitions, 0 will be mapped to *below* and 1 to
+*above*.
+
 # BUILD MODELS
-## Models 1 & 2
 First, we will split the training data into two sets. This will allow us to
 perform a cross validation scheme on the models to tune parameters for optimum
 performance. 
@@ -222,15 +243,30 @@ performance.
 ```{r m12_tts}
 # BUILD MODELS
 # train-test split
-crime_df <- as.tibble(df) %>%
+
+crime_df <- new_df %>%
   mutate(target = as.factor(target)) %>% 
   mutate_if(is.integer, as.numeric)
 
+# This is so Model 3 can use the same train/test split as Models 1 and 2
+crime_df$id <- seq_len(nrow(crime_df))
+
+# Changing the text above caused changes in output as fewer command were run. It
+# is ALWAYS a good idea to set a seed IMMEDIATELY before any sampling in a
+# Markdown file to ensure repeatability.
+
+set.seed(7104)
 data_split <- initial_split(crime_df, 
                             strata = target, 
                             prop = 0.8)
-train_df<- training(data_split)
-test_df<- testing(data_split)
+train_df <- training(data_split)
+test_df <- testing(data_split)
+
+# Capture the indices and remove the no-longer-necessary column
+tstIDX <- test_df$id
+crime_df <- subset(crime_df, select = -id)
+train_df <- subset(train_df, select = -id)
+test_df <- subset(test_df, select = -id)
 ```
 
 ## Model 1
@@ -240,8 +276,8 @@ This includes all variables in the dataset.
 
 ```{r baseModel1}
 baseModel <- glm(target~., family = binomial, data = train_df)
-knitr::kable(summary(baseModel)$coefficients, digits = 3L,
-             caption = 'Base Model Logistic Regression Output')
+kable(summary(baseModel)$coefficients, digits = 3L,
+      caption = 'Base Model Logistic Regression Output')
 ```
 
 We can immediately see that a few variables *exceed* the 0.05 p-value threshold
@@ -272,13 +308,13 @@ model1 <- train(target ~ zn + nox + age + dis + rad + tax + ptratio + lstat + me
                trControl = train_control,
                method = "glm",
                family=binomial())
-knitr::kable(summary(model1)$coefficients, digits = 3L,
-             caption = 'Backwards Model Regression Output')
+kable(summary(model1)$coefficients, digits = 3L,
+      caption = 'Backwards Model Regression Output')
 ```
 
 Let's take a look at the *signs* of the coefficients. We can see that the
 coefficients for the variables `zn` and `tax` are negative. This is indicative
-of an inverse relationship; ie, the higher these values, the less likely the
+of an inverse relationship; i.e., the higher these values, the less likely the
 crime rate is above the median. The relationship for the zone variable aligns
 with the findings from our initial data exploration. However, the relationship
 for the tax variable does not; in fact, we saw that there was a positive
@@ -295,166 +331,303 @@ actually be a relationship
 ([https://www.sciencedaily.com/releases/2019/10/191003114007.htm](Source)).
 
 ## Model 2
-### Stacked Classifier
+<!-- ### Stacked Classifier -->
 
-```{r m2setup}
-cv_folds <- vfold_cv(train_df, v = 10, repeats = 1)
+<!-- ```{r m2setup} -->
+<!-- cv_folds <- vfold_cv(train_df, v = 10, repeats = 1) -->
 
-crime_recipe <- recipe(target ~., data=train_df)
+<!-- crime_recipe <- recipe(target ~., data=train_df) -->
 
-crime_wf<- workflow() %>%
-  add_recipe(crime_recipe)
+<!-- crime_wf<- workflow() %>% -->
+<!--   add_recipe(crime_recipe) -->
 
-crtl_grid <- control_stack_grid()
+<!-- crtl_grid <- control_stack_grid() -->
+<!-- ``` -->
+
+<!-- Specify the models. Using SVM as another model to blend with the logistic.  -->
+
+<!-- ```{r m2svm} -->
+<!-- logit_specs <-  -->
+<!--   logistic_reg( -->
+<!--     penalty = tune(), -->
+<!--     mixture = tune() -->
+<!--     ) %>% -->
+<!--   set_engine("glm") %>% -->
+<!--   set_mode("classification") -->
+
+<!-- svm_specs <-  -->
+<!--   svm_rbf( -->
+<!--     cost = tune(), -->
+<!--     rbf_sigma = tune(), -->
+<!--     margin = tune() -->
+<!--   ) %>% -->
+<!--   set_mode("classification") %>% -->
+<!--   set_engine("kernlab") -->
+<!-- ``` -->
+
+<!-- Tuning the models for best parameters. The stack function will cherry pick the -->
+<!-- models that best optimize the blended final model.  -->
+
+<!-- ```{r m2stack} -->
+<!-- svm_wf <- -->
+<!--   crime_wf %>% -->
+<!--   add_model(svm_specs) -->
+
+<!-- svm_results<- -->
+<!--   tune_grid( -->
+<!--     svm_wf,  -->
+<!--     resample = cv_folds, -->
+<!--     control = crtl_grid, -->
+<!--     grid = 10, -->
+<!--     save_pred = TRUE, -->
+<!--     save_workflow = FALSE -->
+<!--   ) -->
+
+<!-- logit_wf <-  -->
+<!--   crime_wf %>% -->
+<!--   add_model(logit_specs) -->
+
+<!-- logit_results <- -->
+<!--   tune_grid( -->
+<!--     logit_wf, -->
+<!--     resamples = cv_folds, -->
+<!--     control = crtl_grid, -->
+<!--     grid = 10, -->
+<!--     save_pred = TRUE, -->
+<!--     save_workflow = FALSE -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- Blend! -->
+
+<!-- ```{r m2Blend} -->
+<!-- crime_model_stack <- -->
+<!--   stacks() %>% -->
+<!--   add_candidates(logit_results) %>% -->
+<!--   add_candidates(svm_results) %>% -->
+<!--   blend_predictions() %>% -->
+<!--   fit_members() -->
+
+<!-- crime_model_stack -->
+<!-- ``` -->
+
+<!-- ```{r m2Predict} -->
+<!-- crime_pred <- -->
+<!--   test_df %>% -->
+<!--   bind_cols(predict(crime_model_stack, ., type = "prob"), -->
+<!--             predict(crime_model_stack, ., type = "class")) -->
+<!-- ``` -->
+
+<!-- Computing the metrics for the stacked model: -->
+
+<!-- ```{r m2Stats} -->
+<!-- roc<- yardstick::roc_auc( -->
+<!--   crime_pred, -->
+<!--   truth = target, -->
+<!--   contains(".pred_1") -->
+<!--   ) -->
+
+<!-- acc<- yardstick::accuracy( -->
+<!--   crime_pred, -->
+<!--   truth = target, -->
+<!--   estimate = .pred_class -->
+<!-- ) -->
+
+<!-- recall<- yardstick::recall( -->
+<!--   crime_pred, -->
+<!--   truth = target, -->
+<!--   estimate = .pred_class -->
+<!-- ) -->
+
+<!-- precise<- yardstick::precision( -->
+<!--   crime_pred, -->
+<!--   truth = target, -->
+<!--   estimate = .pred_class -->
+<!-- ) -->
+<!-- metrics_df<- -->
+<!--   bind_rows(roc, acc, recall, precise) -->
+
+<!-- crime_pred %>% -->
+<!--   conf_mat(truth = target, estimate = .pred_class) -->
+
+<!-- metrics_df -->
+<!-- ``` -->
+
+## Model 3
+```{r m3trainTemp}
+DT_train <- DT[!(IDX %in% tstIDX)]
 ```
 
-Specify the models. Using SVM as another model to blend with the logistic. 
+Model 3 will be a binary logistic regression allowing for all variables and
+selected pair-wise interactions pruned using both forward and backward stepwise
+regression based on AICc to select the optimal parameters. The captured indicies
+of the test set for models 1 & 2 will be used to split the data for model 3 as
+well. To address the possibility of overfitting, five-fold cross-validation will
+be done on the training set. With the vanilla logistic regression model in R,
+`glm` with a binomial family and a logit link, there are no other
+hyperparameters available for tuning. More sophisticated logistic regression
+implementation have these parameters for fine-tuning.
 
-```{r m2svm}
-logit_specs <- 
-  logistic_reg(
-    penalty = tune(),
-    mixture = tune()
-    ) %>%
-  set_engine("glm") %>%
-  set_mode("classification")
+To consider *all* interactions would be foolhardy. Given the need for dummy
+variables, there will 19 predictors and so \(_{19}C_2 = 171\) possible pairs.
+This is too much. Therefore, intentional selection of pairs is required.
+Looking at the predictors, there are some which logically may interact with
+each other, such as:
 
-svm_specs <- 
-  svm_rbf(
-    cost = tune(),
-    rbf_sigma = tune(),
-    margin = tune()
-  ) %>%
-  set_mode("classification") %>%
-  set_engine("kernlab")
+  * `indus` and `nox`
+    * Nitrous Oxide is a common industrial pollutant. There is a high
+    correlation in the training set between the two. Allowing for its
+    interaction may temper the result of their relationship without losing more
+    information
+
+What may prove interesting is to look at some unsupervised clustering techniques
+to provide us with insights as to which variables may be "close" enough to
+warrant interactions. Instead of treating the observations as samples, we will
+treat the predictors as samples!
+
+```{r m3Clust, fig.height=6}
+predClust <- hclust(dist(t(DT_train[, -c('target', 'IDX')]), diag = TRUE))
+plot(predClust, xlab = "Raw Predictors")
 ```
 
-Tuning the models for best parameters. The stack function will cherry pick the
-models that best optimize the blended final model. 
+It seems that there may be reason to consider an interaction between `chas` and
+`nox`. Can it be that many industrial plants are on the river? Similarly with
+`indus` and `lstat`. Higher-cost homes tend to be further away from the traffic
+and pollution of industrial areas.
 
-```{r m2stack}
-svm_wf <-
-  crime_wf %>%
-  add_model(svm_specs)
+Our selected starting model will include the following interactions:
 
-svm_results<-
-  tune_grid(
-    svm_wf, 
-    resample = cv_folds,
-    control = crtl_grid,
-    grid = 10,
-    save_pred = TRUE,
-    save_workflow = FALSE
-  )
+  * indus:nox
+  * indus:lstat
+  * chas:nox
+  * ptratio:medv
+  * rm:dis
+  
+### Train Model
 
-logit_wf <- 
-  crime_wf %>%
-  add_model(logit_specs)
-
-logit_results <-
-  tune_grid(
-    logit_wf,
-    resamples = cv_folds,
-    control = crtl_grid,
-    grid = 10,
-    save_pred = TRUE,
-    save_workflow = FALSE
-)
+```{r m3dataPrep}
+DT[, `:=`(chas = factor(chas, labels = c('OffRiver', 'OnRiver')),
+          rad = factor(rad),
+          target = factor(target, labels = c('Below', 'Above')))]
+DT_test <- DT[IDX %in% tstIDX]
+DT_train <- DT[!(IDX %in% tstIDX)]
+```
+```{r m3build}
+trC <- trainControl(method = 'cv', number = 5, classProbs = TRUE,
+                    summaryFunction = twoClassSummary)
+dVars <- dummyVars(target ~ indus * nox +
+                     indus * lstat +
+                     chas * nox +
+                     ptratio * medv +
+                     rm * dis + . - IDX, data = DT_train, fullRank = TRUE)
+DTtrnx <- predict(dVars, newdata = DT_train)
+DTtrny <- DT_train$target
+set.seed(1)
+m3Fit <- train(x = DTtrnx, y = DTtrny, method = 'glmStepAIC', trControl = trC,
+               family = 'binomial', trace = 0, direction = 'both')
 ```
 
-Blend!
-
-```{r m2Blend}
-crime_model_stack <- 
-  stacks() %>%
-  add_candidates(logit_results) %>%
-  add_candidates(svm_results) %>%
-  blend_predictions() %>%
-  fit_members()
-
-crime_model_stack
+### Coefficient Discussion
+```{r m3Sum}
+kable(summary(m3Fit$finalModel)$coefficients, digits = 3L,
+             caption = 'Stepwise Interaction-Allowed Logistic Regression Output')
 ```
+                    
+The selected model has some interesting results. Firstly, the predictor with the
+greatest effect is `nox`. Further, the only model variable which serves to
+**decrease** the crime rate from the baseline is `rm`. Other variables, such as
+`chas`
 
-```{r m2Predict}
-crime_pred <- 
-  test_df %>%
-  bind_cols(predict(crime_model_stack, ., type = "prob"), 
-            predict(crime_model_stack, ., type = "class"))
+The interactions between `indus` and both `nox` and `lstat` are significant. As
+theorized, these interactions serve to temper their individual contributions to
+crime. Remember, a 1 indicates crime above the median, so positive coefficients
+indicate contributions to *increasing* the crime rate. A similar observation
+holds `rm`. While `dis` on its own did not decrease the model's AICc, its
+interaction to temper `rm` did help the model's deviance. No other selected
+interactions were left in the model.
+
+A number of variables fell out of the model, such as `chas`, `dis`, and `zn`
+amobg others. The remaining predictors are all significant, at least at the 10%
+level, except for `rad.24`. However, from the last trace of the stepping routine
+shown below, removing it would ***drastically*** reduce the models performance.
+Lastly, while `rad.1` is the base case, `rad.2` has disappeared as well,
+implying that `rad = 2` should be considered indistinguishable from `rad = 1`. 
 ```
-
-Computing the metrics for the stacked model:
-
-```{r m2Stats}
-roc<- yardstick::roc_auc(
-  crime_pred,
-  truth = target,
-  contains(".pred_1")
-  )
-
-acc<- yardstick::accuracy(
-  crime_pred, 
-  truth = target, 
-  estimate = .pred_class
-)
-
-recall<- yardstick::recall(
-  crime_pred,
-  truth = target, 
-  estimate = .pred_class
-)
-
-precise<- yardstick::precision(
-  crime_pred,
-  truth = target, 
-  estimate = .pred_class
-)
-metrics_df<-
-  bind_rows(roc, acc, recall, precise)
-
-crime_pred %>%
-  conf_mat(truth = target, estimate = .pred_class)
-
-metrics_df
+                    Df Deviance    AIC
+<none>                   90.565 122.56
++ dis                1   89.191 123.19
++ zn                 1   89.558 123.56
++ tax                1   89.700 123.70
+- ptratio            1   93.763 123.76
++ age                1   90.156 124.16
++ `nox:chasOnRiver`  1   90.224 124.22
+- `rm:dis`           1   94.254 124.25
++ chas.OnRiver       1   90.273 124.27
++ rad.6              1   90.315 124.31
+- lstat              1   94.364 124.36
++ `ptratio:medv`     1   90.494 124.49
++ rad.2              1   90.554 124.55
+- rm                 1   95.001 125.00
+- `indus:lstat`      1   95.633 125.63
+- `indus:nox`        1   97.351 127.35
+- indus              1   97.597 127.60
+- medv               1   98.568 128.57
+- rad.3              1  101.594 131.59
+- rad.5              1  105.594 135.59
+- rad.7              1  118.832 148.83
+- nox                1  134.786 164.79
+- rad.8              1  149.967 179.97
+- rad.4              1  152.757 182.76
+- rad.24             1  152.797 182.80
 ```
 
 # SELECT MODELS
 ## Criteria
+In binary classification, often, the measures of focus are precision and recall,
+as opposed to accuracy. A measure combining this is the F1 score, defined as
+twice the sum of precision and recall divided by their product. Another oft-used
+metric is the area under the receiver operating curve, AUC. We will look at
+the three metrics of accuracy, F1, and AUC, and select the model that performs
+best in at least two of the three metrics.
 
 ## Performance 
+```{r comparison}
+compTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
+                        ACC = double(3),
+                        F1 = double(3),
+                        AUC = double(3))
+```
 
 ### Model 1
 ```{r model1_perf}
-
-# SELECT MODELS
 # Model 1 Performance
 model1_preds <- predict(model1, test_df, type = "raw")
 model1_probs <- predict(model1, test_df, type = "prob")
 colnames(model1_probs) <- c('pred0', 'pred1')
 
-
 model1_results <- test_df %>%
   bind_cols(pred = model1_preds, model1_probs)
 
-####### metrics
-m1_roc<- yardstick::roc_auc(
+# Metrics
+m1_roc <- yardstick::roc_auc(
   model1_results,
   truth = target,
   pred0 # select the prob class that corresponds to first level of target
 )
 
-m1_acc<- yardstick::accuracy(
+m1_acc <- yardstick::accuracy(
   model1_results, 
   truth = target, 
   estimate = pred
 )
 
-m1_recall<- yardstick::recall(
+m1_recall <- yardstick::recall(
   model1_results,
   truth = target, 
   estimate = pred
 )
 
-m1_precise<- yardstick::precision(
+m1_precise <- yardstick::precision(
   model1_results,
   truth = target, 
   estimate = pred
@@ -462,40 +635,64 @@ m1_precise<- yardstick::precision(
 
 m1_metrics_df<-
   bind_rows(m1_roc, m1_acc, m1_recall, m1_precise)
-
 m1_metrics_df
-
-
+m1CM <- confusionMatrix(model1_preds, model1_results$target,
+                        mode = 'prec_recall')
+compTable[1, 2] <- m1_acc$.estimate
+compTable[1, 3] <- 2 * m1_precise$.estimate * m1_recall$.estimate /
+  (m1_precise$.estimate + m1_recall$.estimate)
+compTable[1, 4] <- m1_roc$.estimate
+m1CM$table
 ```
 
-### Sub-Models and Coefficient Discussion
+### Model 2
 
-The blended model is comprised of two sub-models, the logistic and the SVM. Below are the prediction results for each sub-model. 
+<!-- The blended model is comprised of two sub-models, the logistic and the SVM. -->
+<!-- Below are the prediction results for each sub-model.  -->
 
-```{r}
-best_model_metric <- select_best(svm_results, "accuracy")
-finalize_workflow(svm_wf, best_model_metric) %>%
-  last_fit(data_split) %>%
-  collect_metrics()
+<!-- ```{r} -->
+<!--  best_model_metric <- select_best(svm_results, "accuracy") -->
+<!--  finalize_workflow(svm_wf, best_model_metric) %>% -->
+<!--    last_fit(data_split) %>% -->
+<!--    collect_metrics() -->
+
+<!--  logit_wf %>% -->
+<!--    last_fit(data_split) %>% -->
+<!--    collect_metrics() -->
+
+<!--  logit_wf %>% -->
+<!--    fit(data = train_df) %>% -->
+<!--    pull_workflow_fit() %>% -->
+<!--    vip(geom = "col", aesthetics = list(fill='red4')) -->
+<!-- ``` -->
+
+<!-- We see that they are both in the low eighties percent for accuracy, and low -->
+<!-- nineties for roc auc. Together make for a better overall prediction.  -->
+
+<!-- We again see that the primary predictor in the logistic regression is the `nox` -->
+<!-- with `rad` and `ptratio` rounding out the top three predictors. This is in line -->
+<!-- with the base model. Living close to the center of town, having teachers, and -->
+<!-- not having polluted air are the largest predictors in terms of above median crime.  -->
+
+### Model 3
+
+```{r m3TestSet}
+tstdVars <- dummyVars(target ~ indus * nox +
+                        indus * lstat +
+                        chas * nox +
+                        ptratio * medv +
+                        rm * dis + . - IDX, data = DT_test, fullRank = TRUE)
+DTtstx <- predict(tstdVars, newdata = DT_test)
+DTtsty <- DT_test$target
+m3Pred <- predict(m3Fit, newdata = DTtstx)
+m3PredP <- predict(m3Fit, newdata = DTtstx, type = 'prob')
+m3CM <- confusionMatrix(m3Pred, DTtsty, mode = 'prec_recall')
+m3CM$table
+compTable[3, 2] <- sum(diag(m3CM$table)) / sum(m3CM$table)
+compTable[3, 3] <- m3CM$byClass[7]
+compTable[3, 4] <- yardstick::roc_auc_vec(DTtsty, m3PredP[, 1])
+kable(compTable, digits = 3L, caption = 'Model Test Results')
 ```
-
-
-
-```{r}
-logit_wf %>%
-  last_fit(data_split) %>%
-  collect_metrics()
-
-logit_wf %>%
-  fit(data = train_df) %>%
-  pull_workflow_fit() %>%
-  vip(geom = "col", aesthetics = list(fill='red4'))
-```
-
-We see that they are both in the low eighties percent for accuracy, and low nineties for roc auc. Together make for a better overall prediction. 
-
-We again see that the primary predictor in the logistic regression is the `nox` with `rad` and `ptratio` rounding out the top three predictors. This is in line with the base model. Living close to the center of town, having teachers, and not having polluted air are the largest predictors in terms of above median crime. 
-
 
 # APPENDIX
 The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
@@ -511,4 +708,28 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r boxplot}
 ```
 ```{r correlation}
+```
+```{r model1_2_adjust}
+```
+```{r m12BC}
+```
+```{r m12applyBC}
+```
+```{r m12BC_plot}
+```
+```{r model1_coeff}
+```
+```{r m3trainTemp}
+```
+```{r m3Clust}
+```
+```{r m3dataPrep}
+```
+```{r m3Sum}
+```
+```{r comparison}
+```
+```{r model1_perf}
+```
+```{r m3TestSet}
 ```
