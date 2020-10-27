@@ -551,8 +551,9 @@ A number of variables fell out of the model, such as `chas`, `dis`, and `zn`
 amobg others. The remaining predictors are all significant, at least at the 10%
 level, except for `rad.24`. However, from the last trace of the stepping routine
 shown below, removing it would ***drastically*** reduce the models performance.
-Lastly, while `rad.1` is the base case, `rad.2` has disappeared as well,
-implying that `rad = 2` should be considered indistinguishable from `rad = 1`. 
+Lastly, while `rad.1` is the base case, `rad.2` and `rad.6` have disappeared as
+well. This indicates that both `rad = 2` and `rad = 6` should be considered
+indistinguishable from `rad = 1`. 
 ```
                     Df Deviance    AIC
 <none>                   90.565 122.56
