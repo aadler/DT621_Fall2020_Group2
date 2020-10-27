@@ -37,6 +37,7 @@ fileTest = "crime-evaluation-data_modified.csv"
 df <- read.csv(paste0(urlRemote, pathGithub, fileTrain))
 nobs <- dim(df)[[1]]
 DT <- as.data.table(df)
+DT[, target := factor(target)]
 eval <- read.csv(paste0(urlRemote, pathGithub, fileTest))
 ```
 
