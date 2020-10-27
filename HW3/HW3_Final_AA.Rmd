@@ -17,8 +17,6 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 library(tidyverse)
 library(tidymodels)
 library(data.table)
-library(stacks)
-library(kernlab)
 library(vip)
 library(summarytools)
 library(corrplot)
@@ -361,6 +359,8 @@ Tuning the models for best parameters.
 logit_wf <-
   crime_wf %>%
   add_model(logit_specs)
+
+crtl_grid<-control_grid(verbose = FALSE)
 
 logit_results <-
   tune_grid(
