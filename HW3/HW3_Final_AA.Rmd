@@ -332,6 +332,8 @@ actually be a relationship
 ## Model 2
 ### Logistic Classifier
 
+We will resample the data to tune parameters for the logistic classifier. This uses all variable as individual predictors. 
+
 ```{r m2setup}
 cv_folds <- vfold_cv(train_df, v = 10, repeats = 1)
 
@@ -353,7 +355,6 @@ logit_specs <-
 
 ```
 
-Tuning the models for best parameters. 
 
 ```{r m2stack}
 logit_wf <-
@@ -389,7 +390,6 @@ final_model_pred<-
 
 ```
 
-Computing the metrics for the logit model:
 
 ```{r m2Stats}
 roc<- yardstick::roc_auc(
@@ -418,8 +418,6 @@ precise<- yardstick::precision(
 metrics_df<-
   bind_rows(roc, acc, recall, precise)
 
-crime_pred %>%
-  conf_mat(truth = target, estimate = .pred_class)
 ```
 
 ## Model 3
@@ -620,9 +618,10 @@ m1CM$table
 Below the feature importances for the logistic model. 
 
 ```{r}
-logit_wf %>%
-  last_fit(data_split) %>%
-  collect_metrics()
+final_model_pred %>%
+  conf_mat(truth = target, estimate = .pred_class)
+
+metrics_df
 
 logit_wf %>%
   fit(data = train_df) %>%
