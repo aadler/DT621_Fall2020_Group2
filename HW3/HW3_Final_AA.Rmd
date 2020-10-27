@@ -235,6 +235,7 @@ conventions. Based on the definitions, 0 will be mapped to *below* and 1 to
 *above*.
 
 # BUILD MODELS
+
 First, we will split the training data into two sets. This will allow us to
 perform a cross validation scheme on the models to tune parameters for optimum
 performance. 
@@ -332,8 +333,6 @@ actually be a relationship
 ## Model 2
 ### Logistic Classifier
 
-We will resample the data to tune parameters for the logistic classifier. This uses all variable as individual predictors. 
-
 ```{r m2setup}
 cv_folds <- vfold_cv(train_df, v = 10, repeats = 1)
 
@@ -355,6 +354,7 @@ logit_specs <-
 
 ```
 
+Tuning the models for best parameters. 
 
 ```{r m2stack}
 logit_wf <-
@@ -390,35 +390,48 @@ final_model_pred<-
 
 ```
 
+Computing the metrics for the logit model:
 
 ```{r m2Stats}
-roc<- yardstick::roc_auc(
+m2_roc<- yardstick::roc_auc(
   final_model_pred,
   truth = target,
   contains(".pred_1")
   )
 
-acc<- yardstick::accuracy(
+m2_acc<- yardstick::accuracy(
   final_model_pred, 
   truth = target, 
   estimate = .pred_class
 )
 
-recall<- yardstick::recall(
+m2_recall<- yardstick::recall(
   final_model_pred,
   truth = target,
   estimate = .pred_class
 )
 
-precise<- yardstick::precision(
+m2_precise<- yardstick::precision(
   final_model_pred,
   truth = target,
   estimate = .pred_class
 )
-metrics_df<-
-  bind_rows(roc, acc, recall, precise)
-
+m2_metrics_df<-
+  bind_rows(m2_roc, m2_acc, m2_recall, m2_precise)
 ```
+
+
+```{r}
+logit_wf %>%
+  fit(data = train_df) %>%
+  pull_workflow_fit() %>%
+  vip(geom = "col", aesthetics = list(fill='red4'))
+```
+
+We again see that the primary predictor in the logistic regression is the `nox`
+with `rad` and `ptratio` rounding out the top three predictors. This is in line
+with the base model. Living close to the center of town, having teachers, and
+not having polluted air are the largest predictors in terms of above median crime.
 
 ## Model 3
 ```{r m3trainTemp}
@@ -429,7 +442,7 @@ Model 3 will be a binary logistic regression allowing for all variables and
 selected pair-wise interactions pruned using both forward and backward stepwise
 regression based on AICc to select the optimal parameters. The captured indicies
 of the test set for models 1 & 2 will be used to split the data for model 3 as
-well. To address the possibility of overfitting, five-fold cross-validation will
+well. To address the possibility of over-fitting, five-fold cross-validation will
 be done on the training set. With the vanilla logistic regression model in R,
 `glm` with a binomial family and a logit link, there are no other
 hyperparameters available for tuning. More sophisticated logistic regression
@@ -559,6 +572,8 @@ the three metrics of accuracy, F1, and AUC, and select the model that performs
 best in at least two of the three metrics.
 
 ## Performance 
+Below the feature importance for all the models. 
+
 ```{r comparison}
 compTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
                         ACC = double(3),
@@ -603,7 +618,7 @@ m1_precise <- yardstick::precision(
 
 m1_metrics_df<-
   bind_rows(m1_roc, m1_acc, m1_recall, m1_precise)
-m1_metrics_df
+
 m1CM <- confusionMatrix(model1_preds, model1_results$target,
                         mode = 'prec_recall')
 compTable[1, 2] <- m1_acc$.estimate
@@ -615,24 +630,19 @@ m1CM$table
 
 ### Model 2
 
-Below the feature importances for the logistic model. 
-
-```{r}
+```{r m2TestSet}
 final_model_pred %>%
   conf_mat(truth = target, estimate = .pred_class)
 
-metrics_df
+m2.metrics <- logit_wf %>%
+  last_fit(data_split) %>%
+  collect_metrics()
 
-logit_wf %>%
-  fit(data = train_df) %>%
-  pull_workflow_fit() %>%
-  vip(geom = "col", aesthetics = list(fill='red4'))
+compTable[2, 2] <- m2.metrics[1,3]
+compTable[2, 3] <- 2 * m2_precise$.estimate * m2_recall$.estimate /
+  (m2_precise$.estimate + m2_recall$.estimate)
+compTable[2, 4] <- m2.metrics[2,3]
 ```
-
-We again see that the primary predictor in the logistic regression is the `nox`
-with `rad` and `ptratio` rounding out the top three predictors. This is in line
-with the base model. Living close to the center of town, having teachers, and
-not having polluted air are the largest predictors in terms of above median crime.
 
 ### Model 3
 
@@ -656,6 +666,7 @@ kable(compTable, digits = 3L, caption = 'Model Test Results')
 
 # APPENDIX
 The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
+
 ```{r appendix, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
@@ -679,6 +690,16 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r model1_coeff}
 ```
+```{r m2setup}
+```
+```{r m2svm}
+```
+```{r m2stack}
+```
+```{r m2predict}
+```
+```{r m2Stats}
+```
 ```{r m3trainTemp}
 ```
 ```{r m3Clust}
@@ -690,6 +711,8 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r comparison}
 ```
 ```{r model1_perf}
+```
+```{r m2TestSet}
 ```
 ```{r m3TestSet}
 ```
