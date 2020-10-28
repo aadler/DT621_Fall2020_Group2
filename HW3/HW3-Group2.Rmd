@@ -39,8 +39,17 @@ DT[, target := factor(target)]
 eval <- read.csv(paste0(urlRemote, pathGithub, fileTest))
 ```
 
+# Introduction
+Using data from a major city, Boston, we strove to identify trends and model 
+crime rates and their affect on the housing conditions.  Using 
+binary logistic regression models we hope to predict the crime levels in a 
+neighborhood using various conditions to set the status of the neighborhood. 
+Each section of the report breaks down the steps we took to achieve a solid 
+and effective model.     
+  
 # DATA EXPLORATION
-## Data Description
+## Data Description  
+  
 The training data set contains 466 records summarizing attributes of various
 neighborhoods in the city of Boston. The response variable is coded such that it
 is `1` when the neighborhood’s crime rate is above the median and `0` when it is
