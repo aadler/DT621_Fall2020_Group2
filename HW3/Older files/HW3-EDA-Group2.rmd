@@ -1,0 +1,158 @@
+---
+title: "DATA 621 - Business Analytics and Data Mining"
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, Bryan Persaud,
+  Jeff Shamp
+date: "10/11/2020"
+output:
+  pdf_document: default
+subtitle: 'Fall 2020 - Group 2 - Homework #3'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r loadData, include=FALSE}
+library(tidyverse)
+library(summarytools)
+library(corrplot)
+library(knitr)
+
+urlRemote  = "https://raw.githubusercontent.com/"
+pathGithub = "aadler/DT621_Fall2020_Group2/master/HW3/data/"
+fileTrain = "crime-training-data_modified.csv"
+fileTest = "crime-evaluation-data_modified.csv"
+
+df = read.csv(paste0(urlRemote, pathGithub, fileTrain))
+eval = read.csv(paste0(urlRemote, pathGithub, fileTest))
+```
+
+
+## DATA EXPLORATION
+### Data Description
+
+The training data set contains 466 records summarizing attributes of various neighborhoods in the city of Boston. The response variable is coded such that it is `1` when the neighborhood’s crime rate is above the median and `0` when it is not. In all, there are 12 predictors. These include:
+
+Predictor Variables|Description   
+-|----
+zn | proportion of residential land zoned for large lots (over 25000 square feet) 
+indus | proportion of non-retail business acres per suburb  
+chas | a dummy var. for whether the suburb borders the Charles River (1) or not (0)
+nox | nitrogen oxides concentration (parts per 10 million) 
+rm | average number of rooms per dwelling   
+age | proportion of owner-occupied units built prior to 1940   
+dis | weighted mean of distances to five Boston employment centers  
+rad | index of accessibility to radial highways   
+tax | full-value property-tax rate per $10,000 
+ptratio | pupil-teacher ratio by town 
+lstat | lower status of the population (percent) 
+medv | median value of owner-occupied homes in $1000s 
+
+This data set has complete cases, thus there is no need for imputation. Based on some common summary statistics, there are more observations where the crime rate is below the median. It is already apparent that some of the predictors varies depending the crime rate. For instance, there is a noticeable difference in the means of `age`, `lstat`, `rad`, and `zn` between the crime rate groups. 
+
+```{r sumstat}
+summarystat = stby(data = df, INDICES = df$target, FUN = psych::describe)
+kable(summarystat[[1]][-13,-c(1,7)], 
+      caption = "Descriptive Statistics: Crime Rate > Median", 
+      digit = 2L)
+kable(summarystat[[2]][-13,-c(1,7)], 
+      caption = "Descriptive Statistics: Crime Rate < Median", 
+      digit = 2L)
+```
+
+### Data Distribution
+
+For each predictors, we computed and drew kernel density estimate to understand their distribution. The following plots show how predictors are distributed between areas where crime rate is higher than the median, i.e. blue, and areas where crime rate is below the median, i.e. red. It is of interest to understand variables that highlight large variations between the two groups. 
+
+As a result, the density plots reveal that most is the data is not normal. some variables are heavily right skewed, while others possess multi-model distributions. More specifically, the variable predictor for average number of rooms per dwelling, i.e. `rm`, seems to be the best variable to divide the data into the two groups, since it closely mirrors a normal distribution between groups. Another interesting predictor is `zn`, i.e. proportion of residential land zoned for large lots. It has a significant positive skew (skew = 2.18). Nearly 73% of the observations (339 of 466 total) that have a value of 0. When analyzing the difference between the crime rate groups, it is possible that areas with high crime rate do not have land zoned for large lots. This suggests that suburban areas are likely to have low crime rates because there typically have large lots, whereas urban areas have a higher crime rate since lot size are smaller than 25000 square feet.
+
+```{r density}
+variable = names(df)
+df.new = df
+denplot = function(i){
+  df.new$x = df.new[,variable[i]]
+  ggplot(df.new, aes(x, fill = factor(df.new$target))) + 
+    ggtitle(sprintf("%s", variable[i])) + 
+    geom_density(alpha = 0.4, show.legend = FALSE) + 
+    theme(legend.position = "none",
+          plot.title = element_text(size = 10, hjust = 0.5),
+          axis.title.y = element_blank(),
+          axis.title.x = element_blank())
+}
+gridExtra::grid.arrange(denplot(1),denplot(2),denplot(3),denplot(4),
+                        denplot(5),denplot(6),denplot(7),denplot(8),
+                        denplot(9),denplot(10),denplot(11),denplot(12),
+                        layout_matrix = rbind(c(0,1,2), c(3,4,5), c(6,7,8), c(9,10,11)))
+```
+
+Further visually inspections was conducted using boxplots to highlight how the data is spread for each variable. The graphs show that some variables have a large amount of variance between each other, for example, `zn`, `rad` and `tax`. There are also quite a few values that can be considered outliers within some variables.
+
+```{r boxplot}
+df.new = reshape::melt(df, id.vars= "target") %>%
+  dplyr::filter(variable != "chas") %>%
+  mutate(target = as.factor(target))
+ggplot(df.new, aes(x = variable, y = log(value))) + 
+  geom_boxplot(color = "blue", fill = "blue", alpha = 0.2, 
+               notch = TRUE, notchwidth = 0.8, 
+               outlier.colour = "red", outlier.fill = "red", outlier.size = 3) + 
+  stat_summary(fun.y = mean, color = "red", geom = "point", shape = 16, size = 2) + 
+  coord_flip() + 
+  labs(title = "Boxplot of Predictor Variables")
+
+ggplot(df.new, aes(x = variable, y = log(value))) + 
+  geom_boxplot(alpha = 0.5, outlier.colour = "red", 
+               outlier.fill = "red", outlier.size = 2,
+               aes(fill = target)) + 
+  facet_wrap( ~ variable, scales = "free") + 
+  labs(title = "Boxplot of Predictor Variables by Crime Rate") 
+```
+
+### Data Correlation
+
+By looking at a correlation matrix, boxes with blank color indicate that the correlation was not statistically significant. It is evident that many variables are moderately to highly correlated, $\rho > 0.50$. The correlogram below shows that `nox` has a largest positive correlation with `target`, whereas `dis` has a largest negative correlation with `target`. 
+
+There is a  noticeable influence that socio-economic status has on the crime rate of an area. It is well-known that crime is concentrated in disadvantaged, urban neighborhoods in the United States. The economic segregation suggests that affluent neighborhoods may be further away in terms of distance, and as a result, disadvantaged areas are more attractive to crime because the probability of success is higher even if the targets are not as profitable. Consider areas with a higher socio-economics, these areas are correlated have a lower crime rate. Moreover, industrial areas are correlated with higher levels of nitrogen oxide concentrations. This may be an indication of why these areas are less density with residents of a higher status. This trend is also seen with the `ptratio` since a higher ratio means less funding for public institutions, which is common in areas of lower status.
+
+Lastly, it seems that the variable `chas` which indicate whether the suburb borders the Charles River have statistically insignificant correlation with almost all of the other variables except for `medv`, which is poorly positively correlated.
+
+```{r correlation, fig.height=6, fig.width=6}
+cor.df = function(df){
+  df.m = as.matrix(df)
+  n = ncol(df.m)
+  p.mat = matrix(NA, n, n)
+  diag(p.mat) = 0
+  for (i in 1:(n - 1)){
+    for (j in (i + 1):n){
+      tmp = cor.test(df.m[, i], df.m[, j])
+      p.mat[i, j] = p.mat[j, i] = tmp$p.value
+    }
+  }
+  colnames(p.mat) = rownames(p.mat) = colnames(df.m)
+  p.mat
+}
+p.mat = cor.df(df)
+M = cor(df)
+col = colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(round(M,1), method = "color", col = col(200),  
+         type = "lower", order = "hclust", 
+         addCoef.col = "black",
+         tl.col = "black", tl.srt = 45,
+         p.mat = p.mat, sig.level = 0.01, insig = "blank", 
+         diag = FALSE)
+```
+
+## APPENDIX
+The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
+```{r appendix, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+```{r loadData}
+```
+```{r sumstat}
+```
+```{r density}
+```
+```{r boxplot}
+```
+```{r correlation}
+```
