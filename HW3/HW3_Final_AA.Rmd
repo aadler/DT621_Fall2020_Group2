@@ -171,7 +171,7 @@ There are no missing values so none need to be imputed. Different preparation
 techniques may be used for different models.
 
 ## Models 1 & 2
-The variable `chas` will be removed due to having statistically insignificant\
+The variable `chas` will be removed due to having statistically insignificant
 correlation with almost all the variables in the dataset. Next, outliers will be
 tempered by capping from below at the 5th percentile and from above at the 95th
 percentile.
@@ -189,7 +189,6 @@ for (i in seq_along(new_df)) {
 dens_ageO <- ggplot(new_df, aes(age)) + geom_density()
 dens_lstatO <- ggplot(new_df, aes(lstat)) + geom_density()
 dens_rmO <- ggplot(new_df, aes(rm)) + geom_density()
-
 ```
 
 The Box-Cox transformation will be applied to the `age`, `lstat`, and `rm`
@@ -235,7 +234,6 @@ conventions. Based on the definitions, 0 will be mapped to *below* and 1 to
 *above*.
 
 # BUILD MODELS
-
 First, we will split the training data into two sets. This will allow us to
 perform a cross validation scheme on the models to tune parameters for optimum
 performance. 
@@ -442,11 +440,11 @@ Model 3 will be a binary logistic regression allowing for all variables and
 selected pair-wise interactions pruned using both forward and backward stepwise
 regression based on AICc to select the optimal parameters. The captured indicies
 of the test set for models 1 & 2 will be used to split the data for model 3 as
-well. To address the possibility of over-fitting, five-fold cross-validation will
-be done on the training set. With the vanilla logistic regression model in R,
-`glm` with a binomial family and a logit link, there are no other
-hyperparameters available for tuning. More sophisticated logistic regression
-implementation have these parameters for fine-tuning.
+well. With the vanilla logistic regression model in R, `glm` with a binomial
+family and a logit link, there are no other hyperparameters available for
+tuning. More sophisticated logistic regression implementation have these
+parameters for fine-tuning. There is also no reasonable way to implement
+cross-validation so none will be done.
 
 To consider *all* interactions would be foolhardy. Given the need for dummy
 variables, there will 19 predictors and so \(_{19}C_2 = 171\) possible pairs.
@@ -493,7 +491,7 @@ DT_test <- DT[IDX %in% tstIDX]
 DT_train <- DT[!(IDX %in% tstIDX)]
 ```
 ```{r m3build}
-trC <- trainControl(method = 'cv', number = 5, classProbs = TRUE,
+trC <- trainControl(method = 'none', classProbs = TRUE,
                     summaryFunction = twoClassSummary)
 dVars <- dummyVars(target ~ indus * nox +
                      indus * lstat +
@@ -572,7 +570,8 @@ the three metrics of accuracy, F1, and AUC, and select the model that performs
 best in at least two of the three metrics.
 
 ## Performance 
-Below the feature importance for all the models. 
+Below are the confusion matrices for the three models, followed by a table with
+the selected performance. 
 
 ```{r comparison}
 compTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
@@ -661,11 +660,16 @@ m3CM$table
 compTable[3, 2] <- sum(diag(m3CM$table)) / sum(m3CM$table)
 compTable[3, 3] <- m3CM$byClass[7]
 compTable[3, 4] <- yardstick::roc_auc_vec(DTtsty, m3PredP[, 1])
+```
+
+### Selected Performance Statistics
+```{r selperfstat}
 kable(compTable, digits = 3L, caption = 'Model Test Results')
 ```
 
 # APPENDIX
-The code chunks below represent the R code called in order during the analysis. They are reproduced in the appendix for review and comment.
+The code chunks below represent the R code called in order during the analysis.
+They are reproduced in the appendix for review and comment.
 
 ```{r appendix, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
@@ -715,4 +719,6 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r m2TestSet}
 ```
 ```{r m3TestSet}
+```
+```{r selperfstat}
 ```
