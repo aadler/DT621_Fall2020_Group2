@@ -61,11 +61,12 @@ ptratio | pupil-teacher ratio by town
 lstat | lower status of the population (percent) 
 medv | median value of owner-occupied homes in $1000s 
 
-This data set has complete cases, thus there is no need for imputation. Based on
-some common summary statistics, there are more observations where the crime rate
-is below the median. It is already apparent that some of the predictors varies
-depending the crime rate. For instance, there is a noticeable difference in the
-means of `age`, `lstat`, `rad`, and `zn` between the crime rate groups. 
+We can make some initial observaations. The data set has complete cases, thus, 
+there is no need for imputation. Based on some common summary statistics, 
+there are more observations where the crime rate is below the median. It is already 
+apparent that some of the predictors varies depending the crime rate. For instance, 
+there is a noticeable difference in the means of `age`, `lstat`, `rad`, and `zn` between 
+the crime rate groups. 
 
 ```{r sumstat}
 # DATA EXPLORATION 
@@ -79,12 +80,13 @@ kable(summarystat[[2]][-13,-c(1,7)],
 ```
 
 ## Data Distribution
-For each predictors, we computed kernel density estimators to understand their
-distribution. The following plots show how predictors are distributed between
-areas where the crime rate is higher than the median (blue) and areas where the
-crime rate is below the median (red). It is of interest to understand variables
-that highlight large variations between the two groups. 
-
+    
+For each predictors, we computed and drew kernel density estimate to understand 
+their distribution. Using density plots, we show how predictors are distributed 
+between areas where crime rate is higher than the median, i.e. blue, and areas 
+where crime rate is below the median, i.e. red. Our focus is to understand 
+variables that highlight large variations between the two groups. 
+  
 ```{r density, fig.width=8}
 # density plots
 DT[, IDX := .I]
@@ -94,21 +96,28 @@ ggplot(DTM, aes(x = value, fill = target, color = target)) +
   geom_density(alpha = 0.4, show.legend = FALSE) +
   facet_wrap(~ metric, scales = 'free') 
 ```
-
-The density plots reveal that most of the data does not have a normal
-distribution. There are some are heavily right tailed variables and others which
-are multi-modal. The most Gaussian of the variables appears to be the one
-related to the average number of rooms per dwelling: `rm`. Another
-interesting predictor is `zn`, the proportion of residential land zoned for
-large lots. Nearly 73% of the observations have a value of 0 with the remaining
-spread widely between 1% and 100%. This may the source of possible distortion. A
-third highly-skewed variable is `chas`, the indicator as to whether the lot
-borders the Charles River. Out of the `r nobs` observations,
-`r sum(DT$chas == 0)` do **not** border the river.
-
-To provide another view, this time highlighting outliers, the data was analyzed
-using boxplots.
-
+  
+The plots reveal that most of the data does not have a normal distribution. 
+As expected, we see the heavily right tailed variables and others, which are 
+multi-modal. The most Gaussian of the variables appears to be the one related 
+to the average number of rooms per dwelling: `rm`. 
+  
+Another interesting predictor, `zn` i.e. proportion of residential land zoned 
+for large lots, has a significant positive skew (skew = 2.18). Nearly 73% of 
+the observations (339 of 466 total) have a value of zero. When analyzing the 
+difference between the crime rate groups, it is possible that areas with high 
+crime rate do not have land zoned for large lots suggesting suburban areas are 
+likely to have low crime rates because there typically have large lots, whereas 
+urban areas have a higher crime rate since lot size are smaller than 25000 square 
+feet.  
+  
+Lastly, a third highly skewed variable is `chas`, the indicator as to whether 
+the lot borders the Charles River. Out of the `r nobs` observations,
+`r sum(DT$chas == 0)` do **not** border the river.  
+  
+To provide another view, this time highlighting outliers, we present the data and 
+analyze using boxplots.
+  
 ```{r boxplots, fig.width=8}
 # boxplots 
 
@@ -133,12 +142,7 @@ distribution of the predictor variables is different for for two outcomes. This
 suggests that a model will be able to extract signal from the data.
 
 ## Data Correlation
-Below is a corrgram of the data. The shape of the ellipse reflects the strength
-of the correlation and the color represents the direction. Thus, the diagonal
-which represents the perfect correlation of each variable with itself is a blue
-diagonal line. The shape and the color scheme reflect the guide at the bottom
-of the image.
-
+  
 ```{r correlation, fig.height=5, fig.width=5}
 # correlations
 corrplot(cor(df), method = 'ellipse', type = 'lower', order = 'hclust')
@@ -148,34 +152,39 @@ Looking at the corrgram, we see that there are many variables which are
 moderately to highly correlated, $\left|\rho\right| > 0.50$. Of note is that
 `nox` has a largest positive correlation with `target` and `dis` has the largest
 negative correlation with `target`. 
+  
+It could be possible we are seeing a reflection of the noticeable influence 
+that socio-economic status has on the crime rate of an area.  Graif, Gladfelter 
+and Matthews (2016) state crime is generally concentrated in disadvantaged, 
+urban neighborhoods in the United States.  An economic segregation suggests 
+that affluent neighborhoods may be further away in terms of distance, and as 
+a result, disadvantaged areas are more attractive to crime because the probability 
+of success is higher even if the targets are not as profitable. We prove this data, 
+showing areas with a higher socio-economics correlating to a lower crime rate. 
 
-Perhaps this is a reflection of the noticeable influence that socio-economic
-status has on the crime rate of an area. It is known that crime is concentrated
-in disadvantaged, urban neighborhoods in the United States. The economic
-segregation suggests that affluent neighborhoods may be further away in terms of
-distance, and as a result, disadvantaged areas are more attractive to crime
-because the probability of success is higher even if the targets are not as
-profitable. Consider areas with a higher socio-economics, these areas are
-correlated have a lower crime rate. Moreover, industrial areas are correlated
-with higher levels of nitrogen oxide concentrations. This may be an indication
-of why these areas are less density with residents of a higher status. This
-trend is also seen with the `ptratio` since a higher ratio means less funding
-for public institutions, which is common in areas of lower status.
+Fields (2004) states industrial areas correlate with higher levels of nitrogen oxide 
+concentrations. It may be an indication of why these areas are less dense with residents 
+of a higher status. We see the same trend in `ptratio` since a higher ratio means less 
+funding for public institutions, which is common in areas of lower status.  
 
-Lastly, it seems that the variable `chas`, which indicate whether the suburb
-borders the Charles River, has statistically insignificant correlation with
-almost all of the other variables.
+([https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4928692/](Source)).
+([https://www.ncbi.nlm.nih.gov/pmc/articles/PMC1247398//](Source)).
+  
+Lastly, it seems that the variable `chas`, which indicate whether the suburb borders 
+the Charles River, has statistically insignificant correlation with almost all of the 
+other variables.
 
 # DATA PREPARATION
-There are no missing values so none need to be imputed. Different preparation
-techniques may be used for different models.
+  
+As there are no missing values, we have no need to impute. Instead, different preparation
+techniques are utilized for different models.
 
 ## Models 1 & 2
-The variable `chas` will be removed due to having statistically insignificant
-correlation with almost all the variables in the dataset. Next, outliers will be
-tempered by capping from below at the 5th percentile and from above at the 95th
-percentile.
-
+  
+The variable `chas` will be removed due to having statistically insignificant correlation 
+with almost all the variables in the dataset.  Next, outliers are tempered by capping below 
+the 5th percentile and above the 95th percentile.  
+  
 ```{r model1_2_adjust}
 new_df <- subset(df, select = -chas)
 
@@ -223,17 +232,18 @@ grid.arrange(dens_ageO, dens_lstatO, dens_rmO, dens_age, dens_lstat, dens_rm,
 ```
 
 ## Model 3
-For model 3, very little data manipulation will be done. There may be valuable
-information in the outliers and a reasonable model may be able to extract
-something from `chas`. However, `chas` will be converted to a factor. Similarly,
-`rad` is an index of accessibility, so it is almost certainly a factor, although
-probably ordered. Given there are now two factors in the predictors, dummy
-dummy variables need to be created. Lastly, the **labels** of `target` will be
-changed from integer to character for compliance with some of R's naming
-conventions. Based on the definitions, 0 will be mapped to *below* and 1 to
-*above*.
-
+  
+For model 3, we chose very little data manipulation, as there may be valuable 
+information in the outliers.  A reasonable model may be able to extract 
+something from `chas`.  Some variables, such as `chas` and `rad` (an index of 
+accessibility) are converted to a factor. Additionally, `rad` probably ordered. 
+Given there are now two factors in the predictors, we require creation of dummy 
+variables. Lastly, the **labels** of `target` will be changed from integer to 
+character for compliance with some of R's naming conventions.  Based on the 
+definitions, 0 will be mapped to *below* and 1 to *above*.
+  
 # BUILD MODELS
+  
 First, we will split the training data into two sets. This will allow us to
 perform a cross validation scheme on the models to tune parameters for optimum
 performance. 
@@ -269,6 +279,7 @@ test_df <- subset(test_df, select = -id)
 
 ## Model 1
 ### Base Model
+  
 We will start with a simple logistic regression model to serve as a baseline.
 This includes all variables in the dataset. 
 
@@ -282,20 +293,21 @@ We can immediately see that a few variables *exceed* the 0.05 p-value threshold
 for significance. 
 
 ### Enhanced Model
+ 
 We will use **backwards stepwise regression** to remove features that are not
 statistically significant in predicting the target. The result is a model that
 includes the following features: `zn`, `nox`, `age`, `dis`, `rad`, `tax`,
 `ptratio`, `lstat`, and `medv`. 
 
 ### Coefficient Discussion
-It is important to note that the coefficients from the model are predicting
-whether or not the target variable is a **1** (the crime rate is *above* the
-median value). Additionally, it must be noted that the numeric coefficients are
-relative to the range of values that the variable encompasses. What this means
-is that it's possible to have a coefficient that seems small when we look at the
-absolute magnitude, but that actually has a very strong effect when applied to
-the data.
-
+  
+It is important to note that the coefficients from the model are predicting 
+whether or not the target variable is a **1** (the crime rate *above* the 
+median value). Additionally, since the numeric coefficients are relative to 
+the range of values that the variable encompasses it is possible to have a 
+coefficient that seems small when we look at the absolute magnitude, but that 
+actually has a very strong effect when applied to the data.
+  
 ```{r model1_coeff}
 # 10-fold cross validation
 train_control <- trainControl(method = "cv", number = 10)
@@ -309,25 +321,28 @@ model1 <- train(target ~ zn + nox + age + dis + rad + tax + ptratio + lstat + me
 kable(summary(model1)$coefficients, digits = 3L,
       caption = 'Backwards Model Regression Output')
 ```
-
-Let's take a look at the *signs* of the coefficients. We can see that the
-coefficients for the variables `zn` and `tax` are negative. This is indicative
-of an inverse relationship; i.e., the higher these values, the less likely the
-crime rate is above the median. The relationship for the zone variable aligns
-with the findings from our initial data exploration. However, the relationship
-for the tax variable does not; in fact, we saw that there was a positive
-correlation between the two (as the tax rate increases, so does the probability
-that the crime rate will be above the median).  
   
-The rest of the variables have positive coefficients. Many of these are
-expected. For example, in our exploratory data analysis, we noticed that the
-`nox` variable (nitrogen oxides concentration (parts per 10 million)) has the
-greatest positive correlation with the target variable. This is surprising; we
-hadn't thought that the nitrogen oxide concentration would have as large of an
-impact on the crime rate, but some quick googling shows us that there may
-actually be a relationship
+Looking at the *signs* of the coefficients, we can see the variables `zn` 
+and `tax` are negative. This is indicative of an inverse relationship; 
+i.e., the higher these values, the less likely the crime rate is above the 
+median. The relationship for the zone variable aligns with the findings from 
+our initial data exploration. However, the relationship for the tax variable 
+does not; in fact, we saw that there was a positive correlation between the 
+two variables.  As the tax rate increases so does the probability that the 
+crime rate will be above the median.  
+  
+The rest of the variables have positive coefficients and many of these are 
+expected. For example, in our exploratory data analysis, we noticed that the 
+`nox` variable (nitrogen oxides concentration (parts per 10 million)) has the 
+greatest positive correlation with the target variable. This is surprising!  
+We had not thought that the nitrogen oxide concentration would have as large 
+of an impact on the crime rate. According to Colorado State University (2019), 
+there may actually be a strong relationship between the two.  The team of 
+researchers found strong correlation between exposure to air pollution and 
+aggressive behavior.
+  
 ([https://www.sciencedaily.com/releases/2019/10/191003114007.htm](Source)).
-
+  
 ## Model 2
 ### Logistic Classifier
 
@@ -425,64 +440,67 @@ logit_wf %>%
   pull_workflow_fit() %>%
   vip(geom = "col", aesthetics = list(fill='red4'))
 ```
-
-We again see that the primary predictor in the logistic regression is the `nox`
-with `rad` and `ptratio` rounding out the top three predictors. This is in line
-with the base model. Living close to the center of town, having teachers, and
-not having polluted air are the largest predictors in terms of above median crime.
-
+  
+We again see that the primary predictor in the logistic regression is the `nox` 
+with `rad` and `ptratio` rounding out the top three predictors staying in line 
+with the base model. Living close to the center of town, having teachers, and 
+not having polluted air are the largest predictors in terms of staying above median 
+crime rates.  
+  
 ## Model 3
 ```{r m3trainTemp}
 DT_train <- DT[!(IDX %in% tstIDX)]
 ```
+    
+Model 3 will be a binary logistic regression allowing for all variables and 
+selected pair-wise interactions pruned using both forward and backward stepwise 
+regression based on AICc to select the optimal parameters. The captured indices 
+of the test set for models 1 & 2 are used to split the data for model 3 as well. 
+To address the possibility of over-fitting, we performed five-fold cross-validation 
+on the training set.  With the vanilla logistic regression model in R, `glm` with 
+a binomial family and a logit link, there are no other hyper parameters available 
+for tuning.  More sophisticated logistic regression implementation have these 
+parameters for fine-tuning.    
+  
+Considering *all* interactions would be foolhardy. Given the need for dummy variables, 
+there will 19 predictors and \(_{19}C_2 = 171\) possible pairs, too much. Therefore, 
+intentional selection of pairs is required.
 
-Model 3 will be a binary logistic regression allowing for all variables and
-selected pair-wise interactions pruned using both forward and backward stepwise
-regression based on AICc to select the optimal parameters. The captured indicies
-of the test set for models 1 & 2 will be used to split the data for model 3 as
-well. With the vanilla logistic regression model in R, `glm` with a binomial
-family and a logit link, there are no other hyperparameters available for
-tuning. More sophisticated logistic regression implementation have these
-parameters for fine-tuning. There is also no reasonable way to implement
-cross-validation so none will be done.
+Looking at the predictors, there are some, which logically may interact with each other, 
+such as:   
+* `indus`
+	* The concentration of non-retail businesses in the area
+* `nox`
+    		* Nitrous Oxide is a common industrial pollutant. 
 
-To consider *all* interactions would be foolhardy. Given the need for dummy
-variables, there will 19 predictors and so \(_{19}C_2 = 171\) possible pairs.
-This is too much. Therefore, intentional selection of pairs is required.
-Looking at the predictors, there are some which logically may interact with
-each other, such as:
-
-  * `indus` and `nox`
-    * Nitrous Oxide is a common industrial pollutant. There is a high
-    correlation in the training set between the two. Allowing for its
-    interaction may temper the result of their relationship without losing more
-    information
-
-What may prove interesting is to look at some unsupervised clustering techniques
-to provide us with insights as to which variables may be "close" enough to
-warrant interactions. Instead of treating the observations as samples, we will
-treat the predictors as samples!
-
+There is a high correlation in the training set between the two. Allowing for its 
+interaction may temper the result of their relationship without losing more information.  
+  
+What may prove interesting is to look at some unsupervised clustering techniques to 
+provide us with insights as to which variables may be "close" enough to warrant interactions. 
+Instead of treating the observations as samples, we will treat the predictors as samples!
+  
 ```{r m3Clust, fig.height=6}
 predClust <- hclust(dist(t(DT_train[, -c('target', 'IDX')]), diag = TRUE))
 plot(predClust, xlab = "Raw Predictors")
 ```
 
 It seems that there may be reason to consider an interaction between `chas` and
-`nox`. Can it be that many industrial plants are on the river? Similarly with
-`indus` and `lstat`. Higher-cost homes tend to be further away from the traffic
-and pollution of industrial areas.
-
-Our selected starting model will include the following interactions:
-
+`nox`. Can that many industrial plants be on the river?   
+  
+Similarly with `indus` and `lstat`. Higher-cost homes tend to be further away from the traffic
+and pollution of industrial areas.  
+  
+Our selected starting model will include the following interactions:  
+  
   * indus:nox
   * indus:lstat
   * chas:nox
   * ptratio:medv
   * rm:dis
-  
+    
 ### Train Model
-
+  
 ```{r m3dataPrep}
 DT[, `:=`(chas = factor(chas, labels = c('OffRiver', 'OnRiver')),
           rad = factor(rad),
@@ -510,27 +528,28 @@ m3Fit <- train(x = DTtrnx, y = DTtrny, method = 'glmStepAIC', trControl = trC,
 kable(summary(m3Fit$finalModel)$coefficients, digits = 3L,
              caption = 'Stepwise Interaction-Allowed Logistic Regression Output')
 ```
-                    
-The selected model has some interesting results. Firstly, the predictor with the
-greatest effect is `nox`. Further, the only model variable which serves to
-**decrease** the crime rate from the baseline is `rm`. Other variables, such as
-`chas`
+  
+The selected model has some interesting results. First, the predictor with the 
+greatest effect is `nox`.  Second, the only model variable which serves to 
+**decrease** the crime rate from the baseline is `rm`. 
 
-The interactions between `indus` and both `nox` and `lstat` are significant. As
-theorized, these interactions serve to temper their individual contributions to
-crime. Remember, a 1 indicates crime above the median, so positive coefficients
-indicate contributions to *increasing* the crime rate. A similar observation
-holds `rm`. While `dis` on its own did not decrease the model's AICc, its
-interaction to temper `rm` did help the model's deviance. No other selected
-interactions were left in the model.
+The interactions between `indus` and both `nox` and `lstat` are significant. 
+As theorized, these interactions serve to temper their individual contributions to 
+crime. Remember, a `1` indicates crime above the median, so positive coefficients 
+indicate contributions to *increasing* the crime rate. A similar observation holds 
+`rm`. While `dis` on its own did not decrease the model's AICc, its interaction 
+to temper `rm` did help the model's deviance. No other selected interactions are 
+left in the model.  
+  
+A number of variables fell out of the model, such as `chas`, `dis`, and `zn` 
+among others. The remaining predictors are all significant, at least at the 10% 
+level, except for `rad.24`. However, from the last trace of the stepping routine 
+shown below, removing it would ***drastically*** reduce the models performance.  
+  
+Lastly, while `rad.1` is the base case, `rad.2` and `rad.6` have disappeared as 
+well. This indicates that both `rad = 2` and `rad = 6` should be considered 
+indistinguishable from `rad = 1`.   
 
-A number of variables fell out of the model, such as `chas`, `dis`, and `zn`
-among others. The remaining predictors are all significant, at least at the 10%
-level, except for `rad.24`. However, from the last trace of the stepping routine
-shown below, removing it would ***drastically*** reduce the models performance.
-Lastly, while `rad.1` is the base case, `rad.2` and `rad.6` have disappeared as
-well. This indicates that both `rad = 2` and `rad = 6` should be considered
-indistinguishable from `rad = 1`. 
 ```
                     Df Deviance    AIC
 <none>                   90.565 122.56
@@ -570,7 +589,7 @@ the three metrics of accuracy, F1, and AUC, and select the model that performs
 best in at least two of the three metrics.
 
 ## Performance 
-Below are the confusion matrices for the three models, followed by a table with
+Below we show the confusion matrices for the three models, followed by a table with
 the selected performance. 
 
 ```{r comparison}
