@@ -70,7 +70,7 @@ ptratio | pupil-teacher ratio by town
 lstat | lower status of the population (percent) 
 medv | median value of owner-occupied homes in $1000s 
 
-We can make some initial observaations. The data set has complete cases, thus, 
+We can make some initial observations. The data set has complete cases, thus, 
 there is no need for imputation. Based on some common summary statistics, there
 are more observations where the crime rate is below the median. It is already 
 apparent that some of the predictors varies depending the crime rate. For
@@ -247,7 +247,7 @@ information in the outliers. A reasonable model may be able to extract something
 from `chas`. Some variables, such as `chas` and `rad`, an index of accessibility,
 are converted to a factor. Additionally, while `rad` may have an ordering, it
 will be converted to a normal factor, as ordered factors are processed via
-orthogonal polynoial regression, which is out of the scope of this class. Given
+orthogonal polynomial regression, which is out of the scope of this class. Given
 that there are now two factors in the predictors, we require creation of dummy 
 variables. Lastly, the **labels** of `target` will be changed from integer to 
 character for compliance with some of R's naming conventions.  Based on the 
@@ -277,7 +277,7 @@ data_split <- initial_split(crime_df,
 train_df <- training(data_split)
 test_df <- testing(data_split)
 
-# Model 1: Capture the indices for Model 3 then remove the uneeded column
+# Model 1: Capture the indices for Model 3 then remove the unneeded column
 tstIDX <- test_df$id
 crime_df <- subset(crime_df, select = -id)
 train_df <- subset(train_df, select = -id)
@@ -471,7 +471,7 @@ cross-validation.
   
 Considering *all* interactions would be foolhardy. Given the need for dummy
 variables, there will 19 predictors and \(_{19}C_2 = 171\) possible pairs---too
-much. Therefore, intentional selection of pairs is required.
+many! Therefore, intentional selection of pairs is required.
 
 Looking at the predictors, there are some, which logically may interact with
 each other, such as:
@@ -561,7 +561,7 @@ selected interactions are left in the model.
 A number of variables fell out of the model, such as `chas`, `dis`, and `zn` 
 among others. The remaining predictors are all significant, at least at the 10% 
 level, except for `rad.24`. However, from the last trace of the stepping routine 
-shown below, removing it would ***drastically*** reduce the models performance.  
+shown below, removing it would ***drastically*** reduce the model's performance.  
   
 Lastly, while `rad.1` is the base case, `rad.2` and `rad.6` have disappeared as 
 well. This indicates that both `rad = 2` and `rad = 6` should be considered 
