@@ -8,3 +8,39 @@ output:
   pdf_document: default
 urlcolor: purple
 ---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r loadData, include=FALSE}
+library(caret)
+library(data.table)
+set.seed(71554)
+
+urlRemote  = "https://raw.githubusercontent.com/"
+pathGithub = "aadler/DT621_Fall2020_Group2/master/HW4/data/"
+fileTrain = "insurance_training_data.csv"
+fileTest = "insurance-evaluation-data.csv"
+
+DT <- fread(paste0(urlRemote, pathGithub, fileTrain))
+nobs <- dim(DT)[[1]]
+eval <- fread(paste0(urlRemote, pathGithub, fileTest))
+```
+
+# Introduction
+The assignment for HW4 is to analyze and model a dataset containing
+approximately 8000 records representing customers of an auto insurance company.
+Each record has two response variables. The first response variable,
+`TARGET_FLAG`, is a 1 or a 0. where a `1` means that the person was in a car
+and a `0` means that the person was not in a car crash. The second response
+variable is `TARGET_AMT`. This value is 0 if the person did not crash their car.
+However, if they did crash their car, this number will be a value greater than
+zero.
+
+The objective of the assignment is to build multiple linear regression and
+binary logistic regression models on the training data to predict **both** the
+probability that a person will crash their car and the amount of money it will
+cost given a crash. Only the variables in the dataset, or variables directly
+derived from them, may be used.
+
+# 
