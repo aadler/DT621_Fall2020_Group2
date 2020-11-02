@@ -13,18 +13,46 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 
 ```{r loadData, include=FALSE}
+# Load necessary libraries
 library(caret)
 library(data.table)
+# Set master seed
 set.seed(71554)
 
+# Set filepaths for data ingestion
 urlRemote  = "https://raw.githubusercontent.com/"
 pathGithub = "aadler/DT621_Fall2020_Group2/master/HW4/data/"
 fileTrain = "insurance_training_data.csv"
 fileTest = "insurance-evaluation-data.csv"
 
-DT <- fread(paste0(urlRemote, pathGithub, fileTrain))
-nobs <- dim(DT)[[1]]
-eval <- fread(paste0(urlRemote, pathGithub, fileTest))
+# Read training file
+DT <- fread(paste0(urlRemote, pathGithub, fileTrain),
+            colClasses = c(rep('integer', 2L), 'double', rep('integer', 4L),
+                           'double', 'factor', 'double', rep('factor', 4L),
+                           'integer', 'factor', 'double', 'integer',
+                           rep('factor', 2L), 'double', 'integer', 'factor',
+                           rep('integer', 2L), 'factor'))
+
+# Convert character currencies to doubles
+DT[, `:=`(INCOME = as.double(gsub('[$,]', '', INCOME)),
+          HOME_VAL = as.double(gsub('[$,]', '', HOME_VAL)),
+          BLUEBOOK = as.double(gsub('[$,]', '', BLUEBOOK)),
+          OLDCLAIM = as.double(gsub('[$,]', '', OLDCLAIM)))]
+
+# Read and process the test/evaluation file
+eval <- fread(paste0(urlRemote, pathGithub, fileTest),
+              colClasses = c(rep('integer', 2L), 'double', rep('integer', 4L),
+                             'double', 'factor', 'double', rep('factor', 4L),
+                             'integer', 'factor', 'double', 'integer',
+                             rep('factor', 2L), 'double', 'integer', 'factor',
+                             rep('integer', 2L), 'factor'))
+eval[, `:=`(INCOME = as.double(gsub('[$,]', '', INCOME)),
+          HOME_VAL = as.double(gsub('[$,]', '', HOME_VAL)),
+          BLUEBOOK = as.double(gsub('[$,]', '', BLUEBOOK)),
+          OLDCLAIM = as.double(gsub('[$,]', '', OLDCLAIM)))]
+
+# Number of training observations
+ntrobs <- dim(DT)[[1]]
 ```
 
 # Introduction
@@ -75,3 +103,5 @@ The data is composed of the following variables:
 |TRAVTIME|Distance to Work|Long drives to work usually suggest greater risk|
 |URBANICITY|Home/Work Area|Unknown|
 |YOJ|Years on Job|People who stay at a job for a long time are usually more safe|
+
+
