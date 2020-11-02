@@ -437,12 +437,14 @@ indicates that commercial use vehicles don't really add to claim frequency in
 rural areas---the singleton variable is absent from the model---but they have
 an outsized influence on increased claim probabilities in urban areas!
 
+#### Variable Importance
 In terms of variable importance, it can be estimated from the the last trace of
 the stepping procedure shown below. The further down the table the variable is,
-the more dramatic its inclusion or exclusion will be. The top 10 variables in
-order would be: `URBANICITY.Urban`, `CAR_USECommercial:URBANICITYUrban`,
-`REVOKED.Yes`, `TRAVTIME`, `CAR_TYPE.Sports Car`, `CLM_FREQ`, `TIF`, `MVR_PTS`,
-`CAR_TYPE.SUV`, and `JOB.Blue Collar`.
+the more dramatic its inclusion or exclusion will be on the deviance and theAIC.
+The top 10 variables in order would be: `URBANICITY.Urban`,
+`CAR_USECommercial:URBANICITYUrban`, `REVOKED.Yes`, `TRAVTIME`,
+`CAR_TYPE.Sports Car`, `CLM_FREQ`, `TIF`, `MVR_PTS`, `CAR_TYPE.SUV`,
+and `JOB.Blue Collar`.
 
 ```
                                       Df Deviance    AIC
@@ -549,7 +551,14 @@ limits on their homeowners policies, also purchase larger limits on their
 vehicular polices.
 
 The interaction between `INCOME` and `HOME_VAL` serves to temper the effect of
-`HOME_VAL`. Similarly for the inter
+`HOME_VAL`. Similarly for the interaction between `OLDCLAIM` and `CLM_FREQ`.
+
+#### Variable Importance
+In terms of variable importance, it can be estimated from the the last trace of
+the stepping procedure shown below. There are only eight variables in the model,
+and in order of AIC contribution they are `BLUEBOOK`, `OLDCLAIM`, `HOME_VAL`,
+`INCOME:HOME_VAL`, `CAR_USE.Commercial`, `OLDCLAIM:CLM_FREQ`, `MSTATUS.Yes`, and
+` REVOKED.Yes`.
 
 ```
                                       Df   Deviance   AIC
