@@ -294,6 +294,8 @@ setattr(DT$URBANICITY, 'levels', c('Urban', 'Rural'))
 set(DT, NULL, 'MSTATUS', relevel(DT$MSTATUS, 'No'))
 # Set default car usage to private
 set(DT, NULL, 'CAR_USE', relevel(DT$CAR_USE, 'Private'))
+# Set default are to rural, making urban a positive? risk factor
+set(DT, NULL, 'URBANICITY', relevel(DT$URBANICITY, 'Rural'))
 ```
 
 ## Training & Testing Split
@@ -366,13 +368,14 @@ initial interactions considered will be:
  * `CLM_FREQ` with `OLDCLAIM`
  * `MSTATUS` with `SEX`
    * One sex may be more affected by marriage than the other
+ * `CAR_USE` with `URBANICITY`
  
 ```{r model1DummyFreq}
 trnFreq <- factor(trnX$TARGET_FLAG, levels = c(0, 1),
                   labels = c("NoClaim", "Claim"))
-trnDumFreq <- dummyVars(TARGET_FLAG ~ .  + OWN * HOME_VAL +
-                          KIDSDRIV * HOMEKIDS + HOME_VAL * INCOME * BLUEBOOK +
-                          CLM_FREQ * OLDCLAIM + MSTATUS * SEX - INDEX -
+trnDumFreq <- dummyVars(TARGET_FLAG ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
+                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
+                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
                           TARGET_AMT,
                         fullRank = TRUE, data = trnX)
 trnXFD <- predict(trnDumFreq, newdata = trnX)
@@ -394,81 +397,100 @@ m1FreqFit <- train(x = trnXFD, y = trnFreq, preProcess = c('nzv', 'knnImpute'),
                    trControl = trC, method = 'glmStepAIC',
                    family = binomial(link = 'logit'), direction = 'both',
                    trace = 0)
-kable(summary(m1FreqFit)$coefficients, digits = 3L,
+kable(summary(m1FreqFit$finalModel)$coefficients, digits = 3L,
       caption = "Model 1 Frequency Regression Output")
 ```
 
 #### Coefficient Discussion
-Positive coefficients represent an **increased** risk of a claim over the
-baseline and negative coefficients represent a **decreased** risk over the
-baseline. Most of the coefficients are of the expected direction. For example,
-having one's license revoked or living in an urban area is a *positive* risk
-factor for claims while higher levels of wealth or education are *negative* risk
-factors.
+It is difficult to directly map the predictors to probabilities, as all the
+values have been centered and scaled in order to perform the imputation.
+However, we can say that positive coefficients represent an **increased** risk
+of a claim over the baseline and negative coefficients represent a **decreased**
+risk under the baseline. When validating and then testing, the same imputations
+will be done and the results will be predicted on the normal probability scale.
 
-Some interesting observations. `SEX` is not a significant predictor, even at the
-10% level, but removing it does not increase the AIC, so it remains. The
-hypothesized interaction between `MSTATUS` and `SEX` does lower the deviance,
-but not enough to justify the additional parameter.
+Most of the coefficients are of the expected direction. For example, having
+one's license revoked, living in an urban area, or increased travel times are
+all *positive* risk factors while higher levels of wealth or education are
+*negative* risk factors.
 
-The predictors with the greatest effect on risk are `URBANICITY` and `INCOME`.
-Having the three-way interaction between `HOME_VAL`, `INCOME`, and `BLUEBOOK`,
-together with `INCOME` and `BLUEBOOK` alone, obviated the need for stand-alone
-`HOME_VAL` and the other two possible interactions.
+Some interesting observations. The predictors with the greatest effect on risk
+are `URBANICITY` and `INCOME`. The value of the coefficient for `SEX` implies
+that being female decreases the probability of a claim, as suspected, but it is
+only significant as a predictor at the 10% level. However, it is kept in the
+model as removing it increases the AIC. The hypothesized interaction between
+`MSTATUS` and `SEX` does lower the deviance, but not enough to justify the
+additional parameter. `BLUEBOOK` value is a negative risk factor. Perhaps people
+with more expensive cars drive more carefully?
+
+The full three-way interaction between `HOME_VAL`, `INCOME`, and `BLUEBOOK` was
+deemed insignificant in light of the existing two-way interactions which are in
+the model.
+
+The interaction between `CLM_FREQ` and `OLDCLAIM` did help the model AIC, and
+the coefficient indicates that while `OLDCLAIM` did not justify the additional
+parameter, its tempering of `CLM_FREQ` **does** justify the additional
+parameter.
+
+The interaction between `CAR_USE` and `URBANICITY` is also of interest. It
+indicates that commercial use vehicles don't really add to claim frequency in
+rural areas---the singleton variable is absent from the model---but they have
+an outsized influence on increased claim probabilities in urban areas!
 
 In terms of variable importance, it can be estimated from the the last trace of
 the stepping procedure shown below. The further down the table the variable is,
 the more dramatic its inclusion or exclusion will be. The top 10 variables in
-order would be: `URBANICITY.Rural`, `REVOKED.Yes`, `CAR_USE.Commercial`,
-`TRAVTIME`, `CAR_TYPE.Sports Car`, `CLM_FREQ`, `MVR_PTS`, `TIF`, `CAR_TYPE.SUV`,
-and `JOB.Blue Collar`.
+order would be: `URBANICITY.Urban`, `CAR_USECommercial:URBANICITYUrban`,
+`REVOKED.Yes`, `TRAVTIME`, `CAR_TYPE.Sports Car`, `CLM_FREQ`, `TIF`, `MVR_PTS`,
+`CAR_TYPE.SUV`, and `JOB.Blue Collar`.
 
 ```
-                             Df Deviance    AIC
-<none>                            5164.6 5224.6
-+ HOMEKIDS                    1   5162.7 5224.7
-+ AGE                         1   5163.1 5225.1
-- SEX.F                       1   5167.4 5225.4
-+ EDUCATION.Masters           1   5163.4 5225.4
-+ JOB.Manager                 1   5163.7 5225.7
-+ OLDCLAIM                    1   5164.0 5226.0
-+ EDUCATION.PhD               1   5164.0 5226.0
-+ `HOME_VAL:BLUEBOOK`         1   5164.2 5226.2
-+ CAR_AGE                     1   5164.2 5226.2
-+ `MSTATUSYes:SEXF`           1   5164.5 5226.5
-+ OWN.Yes                     1   5164.5 5226.5
-+ YOJ                         1   5164.6 5226.6
-+ RED_CAR.yes                 1   5164.6 5226.6
-+ `EDUCATION.High School`     1   5164.6 5226.6
-+ `INCOME:HOME_VAL:BLUEBOOK`  1   5164.6 5226.6
-- `INCOME:BLUEBOOK`           1   5168.8 5226.8
-- `INCOME:HOME_VAL`           1   5170.0 5228.0
-- JOB.Lawyer                  1   5170.6 5228.6
-- JOB.Student                 1   5171.4 5229.4
-- `CAR_TYPE.Panel Truck`      1   5173.5 5231.5
-- MSTATUS.Yes                 1   5174.8 5232.8
-- CAR_TYPE.Van                1   5179.5 5237.5
-- BLUEBOOK                    1   5179.9 5237.9
-- `OLDCLAIM:CLM_FREQ`         1   5180.0 5238.0
-- `JOB.Home Maker`            1   5180.2 5238.2
-- HOME_VAL                    1   5180.7 5238.7
-- EDUCATION.Bachelors         1   5181.4 5239.4
-- INCOME                      1   5182.3 5240.3
-- PARENT1.Yes                 1   5182.6 5240.6
-- CAR_TYPE.Pickup             1   5183.2 5241.2
-- JOB.Professional            1   5186.1 5244.1
-- JOB.Clerical                1   5195.4 5253.4
-- KIDSDRIV                    1   5197.8 5255.8
-- `JOB.Blue Collar`           1   5201.2 5259.2
-- CAR_TYPE.SUV                1   5202.5 5260.5
-- TIF                         1   5204.4 5262.4
-- MVR_PTS                     1   5204.8 5262.8
-- CLM_FREQ                    1   5205.4 5263.4
-- `CAR_TYPE.Sports Car`       1   5208.4 5266.4
-- TRAVTIME                    1   5211.7 5269.7
-- CAR_USE.Commercial          1   5230.2 5288.2
-- REVOKED.Yes                 1   5233.0 5291.0
-- URBANICITY.Rural            1   5612.1 5670.1
+                                      Df Deviance    AIC
+<none>                                     5152.3 5212.3
++ HOMEKIDS                             1   5150.5 5212.5
++ AGE                                  1   5150.8 5212.8
++ EDUCATION.Masters                    1   5151.0 5213.0
+- SEX.F                                1   5155.2 5213.2
++ JOB.Manager                          1   5151.6 5213.6
++ OLDCLAIM                             1   5151.6 5213.6
++ EDUCATION.PhD                        1   5151.7 5213.7
++ `HOME_VAL:BLUEBOOK`                  1   5151.7 5213.7
++ CAR_AGE                              1   5151.8 5213.8
+- `INCOME:BLUEBOOK`                    1   5155.9 5213.9
++ OWN.Yes                              1   5152.1 5214.1
++ `MSTATUSYes:SEXF`                    1   5152.2 5214.2
++ RED_CAR.yes                          1   5152.3 5214.3
++ `EDUCATION.High School`              1   5152.3 5214.3
++ YOJ                                  1   5152.3 5214.3
++ `INCOME:HOME_VAL:BLUEBOOK`           1   5152.3 5214.3
++ CAR_USE.Commercial                   1   5152.3 5214.3
+- `INCOME:HOME_VAL`                    1   5158.7 5216.7
+- JOB.Student                          1   5159.0 5217.0
+- JOB.Lawyer                           1   5159.1 5217.1
+- `CAR_TYPE.Panel Truck`               1   5160.0 5218.0
+- MSTATUS.Yes                          1   5162.6 5220.6
+- CAR_TYPE.Van                         1   5166.3 5224.3
+- BLUEBOOK                             1   5166.6 5224.6
+- `JOB.Home Maker`                     1   5166.7 5224.7
+- `OLDCLAIM:CLM_FREQ`                  1   5167.4 5225.4
+- EDUCATION.Bachelors                  1   5169.0 5227.0
+- HOME_VAL                             1   5169.5 5227.5
+- PARENT1.Yes                          1   5169.9 5227.9
+- INCOME                               1   5170.3 5228.3
+- CAR_TYPE.Pickup                      1   5170.6 5228.6
+- JOB.Professional                     1   5174.0 5232.0
+- JOB.Clerical                         1   5181.7 5239.7
+- KIDSDRIV                             1   5186.1 5244.1
+- `JOB.Blue Collar`                    1   5189.2 5247.2
+- CAR_TYPE.SUV                         1   5189.8 5247.8
+- MVR_PTS                              1   5191.2 5249.2
+- TIF                                  1   5191.8 5249.8
+- CLM_FREQ                             1   5193.0 5251.0
+- `CAR_TYPE.Sports Car`                1   5195.8 5253.8
+- TRAVTIME                             1   5198.9 5256.9
+- REVOKED.Yes                          1   5220.1 5278.1
+- `CAR_USECommercial:URBANICITYUrban`  1   5229.9 5287.9
+- URBANICITY.Urban                     1   5422.8 5480.8
 ```
 
 ### Severity Model
@@ -478,19 +500,19 @@ distributional families to the size of the claims, but the task here is to fit a
 linear regression model to estimate future claim size.
 
 #### Training
-The observations in the training set which have claim amounts will be extracted
-and used to fit the linear regression. Similar to frequency, the model will be
-selected via a forward and backward stepwise AIC algorithm starting with every
-relevant predictive variable and some selected interactions.
+The observations in the training set which have claim amounts greater than 0
+will be extracted and used to fit the linear regression. Similar to frequency,
+the model will be selected via a forward and backward stepwise AIC algorithm
+starting with the same predictors and interactions as in the frequency model.
 
 ```{r model1DummySev}
-trnSev <- trnX$TARGET_AMT[trnX$TARGET_AMT > 0]
-trnDumSev <- dummyVars(TARGET_AMT ~ .  + OWN * HOME_VAL +
-                          KIDSDRIV * HOMEKIDS + HOME_VAL * INCOME * BLUEBOOK +
-                          CLM_FREQ * OLDCLAIM + MSTATUS * SEX - INDEX -
+trnSev <- trnX[TARGET_AMT > 0, TARGET_AMT]
+trnDumSev <- dummyVars(TARGET_AMT ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
+                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
+                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
                           TARGET_FLAG,
                         fullRank = TRUE, data = trnX[TARGET_AMT > 0])
-trnXSD <- predict(trnDumFreq, newdata = trnX[TARGET_AMT > 0])
+trnXSD <- predict(trnDumSev, newdata = trnX[TARGET_AMT > 0])
 ```
 
 ```{r runModel1Sev}
@@ -505,56 +527,80 @@ kable(summary(m1SevFit)$coefficients, digits = 3L,
 ```
 
 #### Coefficient Disucssion
-Hi!
+It is not surprising that this model has many fewer predictors. Information
+which helps in identifying the *existence* of a claim often does not help in
+estimating the *magnitude* of the claim.
+
+Similar to the frequency model, it is difficult to directly map the predictors
+to claim values, as all the values have been centered and scaled in order to
+perform the imputation. However, we can say that positive coefficients represent
+**increased** claim sizes over the baseline and negative coefficients represent
+**decreased** claim sizes under the baseline. When validating and then testing,
+the same imputations will be done and the results will be predicted on the
+normal dollar scale.
+
+The predictive variables with the greatest effect on claim size are `OLD_CLAIM`,
+`HOME_VAL`, and `BLUEBOOK`. The first and third make the most sense. One who has
+had larger claims in the past is likely to have larger claims in the future.
+Also, the claim for damages is very strongly correlated with the value of the
+vehicle. `HOME_VAL` is a bit strange. Perhaps it's serving as a proxy for
+purchased coverage limit. Maybe people with more expensive homes, who buy larger
+limits on their homeowners policies, also purchase larger limits on their
+vehicular polices.
+
+The interaction between `INCOME` and `HOME_VAL` serves to temper the effect of
+`HOME_VAL`. Similarly for the inter
 
 ```
-                             Df   Deviance   AIC
-<none>                          9.5466e+10 31329
-- REVOKED.Yes                 1 9.5614e+10 31329
-+ JOB.Manager                 1 9.5368e+10 31330
-- MSTATUS.Yes                 1 9.5625e+10 31330
-+ CAR_AGE                     1 9.5379e+10 31330
-- `OLDCLAIM:CLM_FREQ`         1 9.5645e+10 31330
-+ `MSTATUSYes:SEXF`           1 9.5392e+10 31330
-- CAR_USE.Commercial          1 9.5650e+10 31330
-+ SEX.F                       1 9.5399e+10 31330
-+ JOB.Professional            1 9.5400e+10 31330
-+ CAR_TYPE.Pickup             1 9.5410e+10 31330
-+ CAR_TYPE.Van                1 9.5412e+10 31330
-+ MVR_PTS                     1 9.5413e+10 31330
-+ HOMEKIDS                    1 9.5415e+10 31330
-+ CLM_FREQ                    1 9.5431e+10 31331
-- `INCOME:HOME_VAL`           1 9.5688e+10 31331
-+ RED_CAR.yes                 1 9.5440e+10 31331
-- HOME_VAL                    1 9.5694e+10 31331
-+ JOB.Student                 1 9.5444e+10 31331
-+ EDUCATION.Masters           1 9.5445e+10 31331
-+ PARENT1.Yes                 1 9.5452e+10 31331
-- OLDCLAIM                    1 9.5709e+10 31331
-+ JOB.Clerical                1 9.5455e+10 31331
-+ `CAR_TYPE.Panel Truck`      1 9.5455e+10 31331
-+ `EDUCATION.High School`     1 9.5456e+10 31331
-+ OWN.Yes                     1 9.5457e+10 31331
-+ TRAVTIME                    1 9.5458e+10 31331
-+ `INCOME:HOME_VAL:BLUEBOOK`  1 9.5460e+10 31331
-+ `JOB.Home Maker`            1 9.5460e+10 31331
-+ URBANICITY.Rural            1 9.5463e+10 31331
-+ `INCOME:BLUEBOOK`           1 9.5464e+10 31331
-+ AGE                         1 9.5464e+10 31331
-+ `HOME_VAL:BLUEBOOK`         1 9.5465e+10 31331
-+ `CAR_TYPE.Sports Car`       1 9.5465e+10 31331
-+ YOJ                         1 9.5465e+10 31331
-+ `JOB.Blue Collar`           1 9.5466e+10 31331
-+ JOB.Lawyer                  1 9.5466e+10 31331
-+ KIDSDRIV                    1 9.5466e+10 31331
-+ EDUCATION.Bachelors         1 9.5466e+10 31331
-+ CAR_TYPE.SUV                1 9.5466e+10 31331
-+ `KIDSDRIV:HOMEKIDS`         1 9.5466e+10 31331
-+ TIF                         1 9.5466e+10 31331
-+ INCOME                      1 9.5466e+10 31331
-+ EDUCATION.PhD               1 9.5466e+10 31331
-- BLUEBOOK                    1 9.6124e+10 31337
+                                      Df   Deviance   AIC
+<none>                                   9.5456e+10 31329
+- REVOKED.Yes                          1 9.5604e+10 31329
++ JOB.Manager                          1 9.5357e+10 31329
+- MSTATUS.Yes                          1 9.5620e+10 31330
++ CAR_AGE                              1 9.5370e+10 31330
++ `MSTATUSYes:SEXF`                    1 9.5382e+10 31330
+- `OLDCLAIM:CLM_FREQ`                  1 9.5636e+10 31330
+- CAR_USE.Commercial                   1 9.5639e+10 31330
++ SEX.F                                1 9.5389e+10 31330
++ JOB.Professional                     1 9.5391e+10 31330
++ CAR_TYPE.Pickup                      1 9.5400e+10 31330
++ MVR_PTS                              1 9.5402e+10 31330
++ CAR_TYPE.Van                         1 9.5403e+10 31330
++ HOMEKIDS                             1 9.5404e+10 31330
++ CLM_FREQ                             1 9.5420e+10 31330
++ `CAR_USECommercial:URBANICITYUrban`  1 9.5426e+10 31330
++ RED_CAR.yes                          1 9.5430e+10 31331
++ JOB.Student                          1 9.5432e+10 31331
+- `INCOME:HOME_VAL`                    1 9.5686e+10 31331
++ EDUCATION.Masters                    1 9.5435e+10 31331
+- HOME_VAL                             1 9.5695e+10 31331
++ PARENT1.Yes                          1 9.5442e+10 31331
++ JOB.Clerical                         1 9.5445e+10 31331
++ `CAR_TYPE.Panel Truck`               1 9.5446e+10 31331
+- OLDCLAIM                             1 9.5700e+10 31331
++ `EDUCATION.High School`              1 9.5446e+10 31331
++ OWN.Yes                              1 9.5447e+10 31331
++ TRAVTIME                             1 9.5448e+10 31331
++ `INCOME:HOME_VAL:BLUEBOOK`           1 9.5450e+10 31331
++ `JOB.Home Maker`                     1 9.5450e+10 31331
++ URBANICITY.Urban                     1 9.5453e+10 31331
++ `INCOME:BLUEBOOK`                    1 9.5454e+10 31331
++ AGE                                  1 9.5454e+10 31331
++ `HOME_VAL:BLUEBOOK`                  1 9.5455e+10 31331
++ `JOB.Blue Collar`                    1 9.5455e+10 31331
++ `CAR_TYPE.Sports Car`                1 9.5455e+10 31331
++ KIDSDRIV                             1 9.5456e+10 31331
++ JOB.Lawyer                           1 9.5456e+10 31331
++ EDUCATION.Bachelors                  1 9.5456e+10 31331
++ YOJ                                  1 9.5456e+10 31331
++ CAR_TYPE.SUV                         1 9.5456e+10 31331
++ INCOME                               1 9.5456e+10 31331
++ `KIDSDRIV:HOMEKIDS`                  1 9.5456e+10 31331
++ TIF                                  1 9.5456e+10 31331
++ EDUCATION.PhD                        1 9.5456e+10 31331
+- BLUEBOOK                             1 9.6115e+10 31337
 ```
+
 # SELECT MODELS
 ## Model Selection Criteria
 For that *classification* algorithm, we will look at accuracy, AUC, and F1, and
