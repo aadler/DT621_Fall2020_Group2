@@ -21,6 +21,7 @@ library(ggplot2)
 library(scales)
 library(knitr)
 library(caret)
+library(RANN)
 library(data.table)
 # Set master seed
 set.seed(71554)
@@ -337,19 +338,13 @@ tstX[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0),
                      levels = c(0, 1), labels = c('No', 'Yes'))]
 ```
 
+# BUILD MODELS
+## Model Set 1
 ### Dummy Variables
 As there are many factor variables, dummy variables will be created. The target
 variables will be removed and held to the side so as not to contaminate the
-fitting
+fitting.
 
-```{r model1createDummy}
-trnFreq <- tstX$TARGET_FLAG
-trnSev <- tstX$TARGET_AMT
-tstDumFreq <- TARGET_FLAG ~ . - c(INDEX, TARGET_AMT)
-```
-
-# BUILD MODELS
-## Model Set 1
 ### Frequency Model
 The frequency model will be a binary logistic on the prepared data. It will
 start with the complete model and allow for some interactions. It will use both
@@ -357,9 +352,89 @@ forward and backward steps to identify which variables to include, using AIC as
 the test metric. Using this approach does not allow for cross-validation. The
 initial interactions considered will be:
 
- * `OWN` with `HOME_VAL` as discussed above
- * `HOME_VAL` with `INCOME` as using both may overstate the effect of wealth
- * `KIDSDRIV` with `HOMEKIDS` as there is 
+ * `OWN` with `HOME_VAL` as discussed in the missing data section
+ * `KIDSDRIV` with `HOMEKIDS`
+ * A three-way interaction between `HOME_VAL`, `INCOME`, and `BLUEBOOK`
+ * `CLM_FREQ` with `OLDCLAIM`
+ 
+ 
+```{r model1createDummy}
+trnFreq <- factor(tstX$TARGET_FLAG, levels = c(0, 1),
+                  labels = c("NoClaim", "Claim"))
+trnSev <- tstX$TARGET_AMT
+tstDumFreq <- dummyVars(TARGET_FLAG ~ .  + OWN * HOME_VAL +
+                          KIDSDRIV * HOMEKIDS + HOME_VAL * INCOME * BLUEBOOK +
+                          CLM_FREQ * OLDCLAIM - INDEX - TARGET_AMT,
+                        fullRank = TRUE, data = tstX)
+tstXD <- predict(tstDumFreq, newdata = tstX)
+```
+
+At this point the code will be set up to preprocess the data and train the
+model. The two pre-processing steps which will be done will be to check for
+near-zero variance between the predictors and then use kNN imputations for
+missing values. The actual code may be found in the CODE APPENDIX.
+
+```{r runModel1Freq}
+trC <- trainControl(method = 'none',            # Using StepAIC
+                    classProbs = TRUE,          # Classification
+                    summaryFunction = prSummary # Precision/Recall)
+)
+set.seed(487)
+binlogFit <- train(x = tstXD, y = trnFreq, preProcess = c('nzv', 'knnImpute'),
+                   trControl = trC, method = 'glmStepAIC', family = 'binomial',
+                   direction = 'both', trace = 0)
+kable(summary(binlogFit)$coefficients, digits = 3L,
+      caption = "Model 1 Frequency Regression Output")
+```
+
+The last trace of the stepping procedure is shown below.
+```
+                             Df Deviance    AIC
+<none>                            2077.4 2135.4
++ YOJ                         1   2075.8 2135.8
+- SEX.F                       1   2080.0 2136.0
+- JOB.Professional            1   2080.2 2136.2
++ `EDUCATION.High School`     1   2076.2 2136.2
++ JOB.Clerical                1   2076.4 2136.4
++ `JOB.Blue Collar`           1   2076.8 2136.8
++ JOB.Lawyer                  1   2076.9 2136.9
++ `INCOME:HOME_VAL`           1   2076.9 2136.9
++ `HOME_VAL:BLUEBOOK`         1   2077.0 2137.0
++ OLDCLAIM                    1   2077.0 2137.0
++ `INCOME:BLUEBOOK`           1   2077.0 2137.0
+- `CAR_TYPE.Panel Truck`      1   2081.2 2137.2
++ RED_CAR.yes                 1   2077.2 2137.2
++ HOMEKIDS                    1   2077.2 2137.2
++ HOME_VAL                    1   2077.3 2137.3
++ `HOME_VAL:OWNYes`           1   2077.3 2137.3
++ AGE                         1   2077.3 2137.3
++ CAR_AGE                     1   2077.4 2137.4
+- JOB.Student                 1   2081.8 2137.8
+- PARENT1.Yes                 1   2082.4 2138.4
+- `INCOME:HOME_VAL:BLUEBOOK`  1   2083.4 2139.4
+- `JOB.Home Maker`            1   2083.4 2139.4
+- EDUCATION.Bachelors         1   2084.5 2140.5
+- `OLDCLAIM:CLM_FREQ`         1   2085.1 2141.1
+- CAR_TYPE.SUV                1   2085.8 2141.8
+- BLUEBOOK                    1   2086.4 2142.4
+- OWN.Yes                     1   2086.5 2142.5
+- EDUCATION.Masters           1   2087.2 2143.2
+- EDUCATION.PhD               1   2089.8 2145.8
+- CAR_TYPE.Pickup             1   2090.1 2146.1
+- CAR_TYPE.Van                1   2090.2 2146.2
+- TRAVTIME                    1   2090.9 2146.9
+- INCOME                      1   2092.0 2148.0
+- `CAR_TYPE.Sports Car`       1   2092.1 2148.1
+- MSTATUS.No                  1   2093.4 2149.4
+- CLM_FREQ                    1   2095.5 2151.5
+- TIF                         1   2095.8 2151.8
+- KIDSDRIV                    1   2101.1 2157.1
+- MVR_PTS                     1   2103.2 2159.2
+- CAR_USE.Private             1   2106.4 2162.4
+- JOB.Manager                 1   2108.4 2164.4
+- REVOKED.Yes                 1   2118.5 2174.5
+- URBANICITY.Rural            1   2271.8 2327.8
+```
 
 # CODE APPENDIX
 ```{r setup2, include=FALSE}
@@ -377,9 +452,15 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r graphsF}
 ```
+```{r corrgram}
+```
 ```{r dataClean}
 ```
 ```{r trainTestSplit}
 ```
 ```{r model1addVars}
+```
+```{r model1createDummy}
+```
+```{r runModel1Freq}
 ```
