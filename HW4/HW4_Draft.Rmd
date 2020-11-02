@@ -393,7 +393,7 @@ set.seed(487)
 m1FreqFit <- train(x = trnXFD, y = trnFreq, preProcess = c('nzv', 'knnImpute'),
                    trControl = trC, method = 'glmStepAIC',
                    family = binomial(link = 'logit'), direction = 'both',
-                   trace = 1)
+                   trace = 0)
 kable(summary(m1FreqFit)$coefficients, digits = 3L,
       caption = "Model 1 Frequency Regression Output")
 ```
