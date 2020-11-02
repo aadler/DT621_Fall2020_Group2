@@ -16,6 +16,9 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 # Load necessary libraries
+library(corrplot)
+library(ggplot2)
+library(scales)
 library(knitr)
 library(caret)
 library(data.table)
@@ -217,6 +220,146 @@ A variable such as `OLDCLAIM` is expected to have a mass point at 0. Every
 observation which had fewer than 2 claims clearly did not have a prior claim!
 
 ### Factor Predictors
+While tabular depiction of factor variables is usually of little value, visual
+representation of their distributions is of use.
+
+```{r graphsF, fig.width=8, fig.height=8}
+# Isolate factor only predictors
+facDT <- DT[, .SD, .SDcols = nmtrnFAC]
+
+# Melt them from wide to long format (need to explicitly call measure.vars since
+# these are all factors)
+facDTM <- melt(facDT, measure.vars = nmtrnFAC, variable.name = 'metric',
+               value.name = 'value')
+ggplot(facDTM, aes(x = value)) + geom_bar(fill = 'darkolivegreen') +
+  facet_wrap( ~ metric, nrow = 5L, scales = 'free') + coord_flip()
+```
+
+In order to use regression-based tools, we are going to have to convert these
+factors to dummy variables. Another important observation is that there are
+rows for which `JOB` is blank and some strange value names for some of the
+factors. Cleaning this up will be handled in the DATA PREPARATION section.
+
+### Correlations
+The corrgram below graphically represents the correlations between the numeric
+predictor variables, when ignoring the missing variables.
+
+```{r corrgram, fig.width=6, fig.height=4}
+corrplot(cor(DT[, ..nmtrnNUM], use = 'complete.obs'),
+         method = 'ellipse', type = 'lower')
+```
+
+Most of the numeric variables are uncorrelated with one another. A few
+exceptions exist:
+
+ * `HOMEKIDS` with `KIDSDRIV`
+   * This is self-explanatory
+ * `HOME_VAL` with `INCOME`
+   * Both are very strongly tied to wealth and net worth
+ * `BLUEBOOK` and `INCOME`
+   * People with more disposable income can afford more expensive vehicles
+ * `CLM_FREQ` with `OLDCLAIM`
+   * More claims implies a greater total aggregate payment
+ * `CAR_AGE` and `INCOME`
+   * This is interesting. It could be that people with higher disposable incomes
+   buy more expensive cars and keep them for longer, but that's a guess.
+ * `MVR_PTS` is *lightly* correlated with `CLM_FREQ` and `OLDCLAIM`
+   * Probably when one is in a lot of accidents, the chances of them being at
+   some level of fault rises
+ * `HOMEKIDS` **negatively** correlated with `AGE`
+   * As people age, their children age as well and eventually move out, we hope!
+
+# DATA PREPARATION
+## Data Value Cleanup
+The first step will be to clean up the strange values and blank `JOB` entries.
+
+```{r dataClean}
+# Clean up data values. Using setattr for fast data.table setting. Equivalent
+# to levels(DT$X) <- c(a, b) but faster since changes by reference.
+setattr(DT$MSTATUS, 'levels', c('Yes', 'No'))
+setattr(DT$SEX, 'levels', c('M', 'F'))
+setattr(DT$EDUCATION, 'levels', c('<High School', 'Bachelors', 'Masters', 'PhD',
+                                  'High School'))
+setattr(DT$JOB, 'levels', c('Unknown', 'Clerical', 'Doctor', 'Home Maker',
+                            'Lawyer', 'Manager', 'Professional', 'Student',
+                            'Blue Collar'))
+setattr(DT$CAR_TYPE, 'levels', c('Minivan', 'Panel Truck', 'Pickup',
+                                 'Sports Car', 'Van', 'SUV'))
+
+setattr(DT$URBANICITY, 'levels', c('Urban', 'Rural'))
+```
+
+## Training & Testing Split
+While the following discussion more properly occurs under BUILD MODELS, as it
+factors into how the data is prepared, it will happen here. All the models will
+be trained on the same approximately 70% of the training set, reserving 30% for
+validation of which model to select for the frequency and severity estimation on
+the supplied evaluation set.
+
+However, there will need to be two sets of training and testing, as the severity
+model must perforce be trained on data for which a claim occurred. To maintain
+integrity, the split of all the data for frequency will be honored for severity.
+The 70/30 split will be honored as all claims with a `TARGET_FLAG` of 1 will
+have non-zero `TARGET_AMT`, However, there will be no guarantee that the
+*distribution* of the loss conditional on event in the validation set will be
+similar to the training set as a whole.
+
+```{r trainTestSplit}
+set.seed(642)
+trnIDX <- createDataPartition(DT$TARGET_FLAG, p = 0.7)
+trnX <- DT[trnIDX$Resample1, ]
+tstX <- DT[!trnIDX$Resample1, ]
+```
+
+## Models Set 1
+### Missing Data
+The issues with factor data were handled universally for all models through
+resetting the levels. What remains is handling the missing numeric values. For
+`CAR_AGE` simple k-means imputation will be used. The remaining three problem
+variables, `YOJ`, `INCOME`, and `HOME_VAL` have both `NA` and 0 issues. 
+
+For `YOJ` and `INCOME`, it is not unreasonable to consider 0 to be realistic:
+unemployed or employed less than half a year. As such, we will leave the 0's and
+impute the NAs.
+
+We will take a different approach with `HOME_VAL`. As seen above when the 0
+values are removed, `HOME_VAL` has a nice lognormal shape. It is also reasonable
+to consider that people responding with 0 for `HOME_VAL` are non-owners as
+opposed to it being missing, although we would want to investigate this further
+were we allowed. Therefore, we are going to add a "Own" variable which will be
+`Yes` for all positive `HOME_VAL` and `No` otherwise, and allow an interaction
+between this value and the actual value. This would be much more effective in a
+decision tree framework, but that is not available.
+
+```{r model1addVars}
+# Add OWN variable for model set 1
+tstX[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0),
+                     levels = c(0, 1), labels = c('No', 'Yes'))]
+```
+
+### Dummy Variables
+As there are many factor variables, dummy variables will be created. The target
+variables will be removed and held to the side so as not to contaminate the
+fitting
+
+```{r model1createDummy}
+trnFreq <- tstX$TARGET_FLAG
+trnSev <- tstX$TARGET_AMT
+tstDumFreq <- TARGET_FLAG ~ . - c(INDEX, TARGET_AMT)
+```
+
+# BUILD MODELS
+## Model Set 1
+### Frequency Model
+The frequency model will be a binary logistic on the prepared data. It will
+start with the complete model and allow for some interactions. It will use both
+forward and backward steps to identify which variables to include, using AIC as
+the test metric. Using this approach does not allow for cross-validation. The
+initial interactions considered will be:
+
+ * `OWN` with `HOME_VAL` as discussed above
+ * `HOME_VAL` with `INCOME` as using both may overstate the effect of wealth
+ * `KIDSDRIV` with `HOMEKIDS` as there is 
 
 # CODE APPENDIX
 ```{r setup2, include=FALSE}
@@ -231,4 +374,12 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r statsN}
 ```
 ```{r graphsN}
+```
+```{r graphsF}
+```
+```{r dataClean}
+```
+```{r trainTestSplit}
+```
+```{r model1addVars}
 ```
