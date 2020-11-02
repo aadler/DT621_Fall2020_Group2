@@ -1,0 +1,15 @@
+base
+methods
+datasets
+utils
+grDevices
+graphics
+stats
+corrplot
+ggplot2
+scales
+knitr
+lattice
+caret
+RANN
+data.table

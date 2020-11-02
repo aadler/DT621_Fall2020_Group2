@@ -384,7 +384,7 @@ model. The two pre-processing steps which will be done will be to check for
 near-zero variance between the predictors and then use kNN imputations for
 missing values. The actual code may be found in the CODE APPENDIX.
 
-```{r model1RunFreq}
+```{r model1RunFreq, cache = 2}
 trC <- trainControl(method = 'none',            # Using StepAIC
                     classProbs = TRUE,          # Classification
                     summaryFunction = prSummary # Precision/Recall)
