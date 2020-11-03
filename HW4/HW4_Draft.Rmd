@@ -248,7 +248,8 @@ predictor variables, when ignoring the missing variables.
 
 ```{r corrgram, fig.width=6, fig.height=4}
 corrplot(cor(DT[, ..nmtrnNUM], use = 'complete.obs'),
-         method = 'ellipse', type = 'lower')
+         method = 'ellipse', type = 'lower', order = 'hclust',
+         hclust.method = 'ward.D2')
 ```
 
 Most of the numeric variables are uncorrelated with one another. A few
@@ -258,11 +259,11 @@ exceptions exist:
    * This is self-explanatory
  * `HOME_VAL` with `INCOME`
    * Both are very strongly tied to wealth and net worth
- * `BLUEBOOK` and `INCOME`
+ * `BLUEBOOK` with`INCOME`
    * People with more disposable income can afford more expensive vehicles
  * `CLM_FREQ` with `OLDCLAIM`
    * More claims implies a greater total aggregate payment
- * `CAR_AGE` and `INCOME`
+ * `CAR_AGE` with `INCOME`
    * This is interesting. It could be that people with higher disposable incomes
    buy more expensive cars and keep them for longer, but that's a guess.
  * `MVR_PTS` is *lightly* correlated with `CLM_FREQ` and `OLDCLAIM`
@@ -364,23 +365,24 @@ forward and backward steps to identify which variables to include, using AIC as
 the test metric. Using this approach does not allow for cross-validation. The
 initial interactions considered will be:
 
- * `OWN` with `HOME_VAL` as discussed in the missing data section
- * `KIDSDRIV` with `HOMEKIDS`
- * A three-way interaction between `HOME_VAL`, `INCOME`, and `BLUEBOOK`
- * `CLM_FREQ` with `OLDCLAIM`
- * `MSTATUS` with `SEX`
-   * One sex may be more affected by marriage than the other
+ * Three-way interaction between `OWN`, `HOME_VAL` and `INCOME`
+   * Represents wealth
+ * Three-way interaction between `CLM_FREQ`, `OLDCLAIM`, and `MVR_PTS`
+   * Represents prior history
  * `CAR_USE` with `URBANICITY`
+   * Represents increased risk of location
+
  
 ```{r model1DummyFreq}
 # Cast target as factor for caret purposes
 trnFreq <- factor(trnX$TARGET_FLAG, levels = c(0, 1),
                   labels = c("NoClaim", "Claim"))
 # Set up dummy variables
-trnDumFreq <- dummyVars(TARGET_FLAG ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
-                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
-                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
-                          TARGET_AMT,
+trnDumFreq <- dummyVars(TARGET_FLAG ~ . +
+                          OWN * HOME_VAL * INCOME +
+                          CLM_FREQ * OLDCLAIM * MVR_PTS +
+                          CAR_USE * URBANICITY -
+                         INDEX - TARGET_AMT,
                         fullRank = TRUE, data = trnX)
 # Create matrix of dummy values
 trnXFD <- predict(trnDumFreq, newdata = trnX)
@@ -394,11 +396,10 @@ missing values. Even though the `caret` package allows the preprocessing to
 occur in the call to `train`, it will be seperated here for clarity. The actual
 code may be found in the CODE APPENDIX.
 
-```{r model1RunFreq, cache=TRUE}
+```{r model1RunFreq}
 # preProcess with near-zero value and kNN imputation
 trnXFDpp <- preProcess(trnXFD, method = c('nzv', 'knnImpute'),
                        k = 3, knnSummary = median)
-
 # Create processed predictors
 trnXFDI <- predict(trnXFDpp, newdata = trnXFD)
 trC <- trainControl(method = 'none',            # Using StepAIC
@@ -425,123 +426,117 @@ will be done and the results will be predicted on the normal probability scale.
 
 Most of the coefficients are of the expected direction. For example, having
 one's license revoked, living in an urban area, or increased travel times are
-all *positive* risk factors while higher levels of wealth or education are
+all *positive* risk factors while higher levels of wealth or being married are
 *negative* risk factors.
 
 Some interesting observations. The predictors with the greatest effect on risk
-are `URBANICITY` and `INCOME`. The value of the coefficient for `SEX` implies
-that being female decreases the probability of a claim, as suspected, but it is
-only significant as a predictor at the 10% level. However, it is kept in the
-model as removing it increases the AIC. The hypothesized interaction between
-`MSTATUS` and `SEX` does lower the deviance, but not enough to justify the
-additional parameter. `BLUEBOOK` value is a negative risk factor. Perhaps people
-with more expensive cars drive more carefully?
+are `URBANICITY` and the increased factor when it is a commercial vehicle. The
+value of the coefficient for `SEX` implies that being female decreases the
+probability of a claim, as suspected, but it is only significant as a predictor
+at the 10% level. However, it is kept in the model as removing it increases the
+AIC. `BLUEBOOK`, `INCOME`, and Having a `HOME_VAL` greater than 0 (as indicated
+by the `OWN` variable being Yes) are all negative indicators, which supports the
+hypothesis that people with greater wealth have fewer accidents. Those values
+are tempered by some of the wealth interactions.
 
-The full three-way interaction between `HOME_VAL`, `INCOME`, and `BLUEBOOK` was
-deemed insignificant in light of the existing two-way interactions which are in
-the model.
-
-The interaction between `CLM_FREQ` and `OLDCLAIM` did help the model AIC, and
-the coefficient indicates that while `OLDCLAIM` did not justify the additional
-parameter, its tempering of `CLM_FREQ` **does** justify the additional
-parameter.
+Every level of the interactions between `CLM_FREQ`, `OLDCLAIM`, and `MVR_PTS`
+are significant.  What this may be telling us is that a linear regression is
+***not*** the proper model for this analysis, and the algorithm is struggling to
+add non-linearity via the interactions.
 
 The interaction between `CAR_USE` and `URBANICITY` is also of interest. It
 indicates that commercial use vehicles don't really add to claim frequency in
 rural areas---the singleton variable is absent from the model---but they have
 an outsized influence on increased claim probabilities in urban areas!
 
+Lastly, red cars do not contribute to increased claims frequency in this model.
+
 #### Variable Importance
 In terms of variable importance, it can be estimated from the the last trace of
 the stepping procedure shown below. The further down the table the variable is,
-the more dramatic its inclusion or exclusion will be on the deviance and theAIC.
-The top 10 variables in order would be: `URBANICITY.Urban`,
-`CAR_USECommercial:URBANICITYUrban`, `REVOKED.Yes`, `TRAVTIME`,
-`CAR_TYPE.Sports Car`, `CLM_FREQ`, `TIF`, `MVR_PTS`, `CAR_TYPE.SUV`,
-and `JOB.Blue Collar`.
+the more dramatic its inclusion or exclusion will be on the deviance and the
+AIC.
 
 ```
                                       Df Deviance    AIC
-<none>                                     5152.3 5212.3
-+ HOMEKIDS                             1   5150.5 5212.5
-+ AGE                                  1   5150.8 5212.8
-+ EDUCATION.Masters                    1   5151.0 5213.0
-- SEX.F                                1   5155.2 5213.2
-+ JOB.Manager                          1   5151.6 5213.6
-+ OLDCLAIM                             1   5151.6 5213.6
-+ EDUCATION.PhD                        1   5151.7 5213.7
-+ `HOME_VAL:BLUEBOOK`                  1   5151.7 5213.7
-+ CAR_AGE                              1   5151.8 5213.8
-- `INCOME:BLUEBOOK`                    1   5155.9 5213.9
-+ OWN.Yes                              1   5152.1 5214.1
-+ `MSTATUSYes:SEXF`                    1   5152.2 5214.2
-+ RED_CAR.yes                          1   5152.3 5214.3
-+ `EDUCATION.High School`              1   5152.3 5214.3
-+ YOJ                                  1   5152.3 5214.3
-+ `INCOME:HOME_VAL:BLUEBOOK`           1   5152.3 5214.3
-+ CAR_USE.Commercial                   1   5152.3 5214.3
-- `INCOME:HOME_VAL`                    1   5158.7 5216.7
-- JOB.Student                          1   5159.0 5217.0
-- JOB.Lawyer                           1   5159.1 5217.1
-- `CAR_TYPE.Panel Truck`               1   5160.0 5218.0
-- MSTATUS.Yes                          1   5162.6 5220.6
-- CAR_TYPE.Van                         1   5166.3 5224.3
-- BLUEBOOK                             1   5166.6 5224.6
-- `JOB.Home Maker`                     1   5166.7 5224.7
-- `OLDCLAIM:CLM_FREQ`                  1   5167.4 5225.4
-- EDUCATION.Bachelors                  1   5169.0 5227.0
-- HOME_VAL                             1   5169.5 5227.5
-- PARENT1.Yes                          1   5169.9 5227.9
-- INCOME                               1   5170.3 5228.3
-- CAR_TYPE.Pickup                      1   5170.6 5228.6
-- JOB.Professional                     1   5174.0 5232.0
-- JOB.Clerical                         1   5181.7 5239.7
-- KIDSDRIV                             1   5186.1 5244.1
-- `JOB.Blue Collar`                    1   5189.2 5247.2
-- CAR_TYPE.SUV                         1   5189.8 5247.8
-- MVR_PTS                              1   5191.2 5249.2
-- TIF                                  1   5191.8 5249.8
-- CLM_FREQ                             1   5193.0 5251.0
-- `CAR_TYPE.Sports Car`                1   5195.8 5253.8
-- TRAVTIME                             1   5198.9 5256.9
-- REVOKED.Yes                          1   5220.1 5278.1
-- `CAR_USECommercial:URBANICITYUrban`  1   5229.9 5287.9
-- URBANICITY.Urban                     1   5422.8 5480.8
+<none>                                     5131.6 5199.6
+- `OLDCLAIM:CLM_FREQ:MVR_PTS`          1   5134.4 5200.4
++ EDUCATION.Masters                    1   5130.6 5200.6
++ HOMEKIDS                             1   5130.7 5200.7
++ CAR_AGE                              1   5130.8 5200.8
+- AGE                                  1   5134.9 5200.9
++ JOB.Manager                          1   5131.0 5201.0
+- SEX.F                                1   5135.0 5201.0
++ HOME_VAL                             1   5131.1 5201.1
++ `HOME_VAL:OWNYes`                    1   5131.1 5201.1
++ EDUCATION.PhD                        1   5131.3 5201.3
++ YOJ                                  1   5131.6 5201.6
++ OWN.Yes                              1   5131.6 5201.6
++ EDUCATION.HighSchool                 1   5131.6 5201.6
++ RED_CAR.yes                          1   5131.6 5201.6
++ CAR_USE.Commercial                   1   5131.6 5201.6
+- OLDCLAIM                             1   5135.9 5201.9
+- JOB.Lawyer                           1   5137.6 5203.6
+- `OLDCLAIM:MVR_PTS`                   1   5138.4 5204.4
+- CAR_TYPE.PanelTruck                  1   5138.7 5204.7
+- `CLM_FREQ:MVR_PTS`                   1   5138.9 5204.9
+- `OLDCLAIM:CLM_FREQ`                  1   5139.0 5205.0
+- JOB.Student                          1   5140.2 5206.2
+- BLUEBOOK                             1   5141.1 5207.1
+- INCOME                               1   5143.0 5209.0
+- JOB.HomeMaker                        1   5143.1 5209.1
+- CAR_TYPE.Van                         1   5144.0 5210.0
+- PARENT1.Yes                          1   5144.7 5210.7
+- MSTATUS.Yes                          1   5145.2 5211.2
+- EDUCATION.Bachelors                  1   5148.1 5214.1
+- `INCOME:HOME_VAL`                    1   5148.6 5214.6
+- CAR_TYPE.Pickup                      1   5149.8 5215.8
+- JOB.Professional                     1   5152.2 5218.2
+- JOB.Clerical                         1   5156.9 5222.9
+- `INCOME:OWNYes`                      1   5156.9 5222.9
+- KIDSDRIV                             1   5164.6 5230.6
+- JOB.BlueCollar                       1   5166.6 5232.6
+- CLM_FREQ                             1   5168.5 5234.5
+- TIF                                  1   5169.5 5235.5
+- CAR_TYPE.SUV                         1   5169.8 5235.8
+- MVR_PTS                              1   5176.4 5242.4
+- CAR_TYPE.SportsCar                   1   5176.9 5242.9
+- TRAVTIME                             1   5179.5 5245.5
+- REVOKED.Yes                          1   5196.8 5262.8
+- `CAR_USECommercial:URBANICITYUrban`  1   5207.3 5273.3
+- URBANICITY.Urban                     1   5388.1 5454.1
 ```
 
 ### Severity Model
-In the insurance world, severity is not necessarily fit via linear models, but
-is more often fit through comparison of the maximum likelihood fits of various
-distributional families to the size of the claims, but the task here is to fit a
-linear regression model to estimate future claim size.
+In the insurance world, severity is not necessarily fit via linear regression.
+Rather, it is more often fit through comparison of the maximum likelihood fits
+of various distributional families to the size of the claims, but the task here
+is to fit a linear regression model to estimate future claim size.
 
 #### Training
 The observations in the training set which have claim amounts greater than 0
 will be extracted and used to fit the linear regression. Similar to frequency,
 the model will be selected via a forward and backward stepwise AIC algorithm
-starting with the same predictors and interactions as in the frequency model.
+starting with the all the predictors. Experimentation with interactions only had
+worse effects, so no interaction will be considered.
 
 ```{r model1DummySev}
 # Extract those observations with values > 0
 trnSev <- trnX[TARGET_AMT > 0, TARGET_AMT]
 # Set up dummy variables
-trnDumSev <- dummyVars(TARGET_AMT ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
-                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
-                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
-                          TARGET_FLAG,
+trnDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
                         fullRank = TRUE, data = trnX[TARGET_AMT > 0])
 # Create matrix of dummy values
 trnXSD <- predict(trnDumSev, newdata = trnX[TARGET_AMT > 0])
 # preProcess with near-zero value and kNN imputation
 trnXSDpp <- preProcess(trnXSD, method = c('nzv', 'knnImpute'),
                        k = 3, knnSummary = median)
-
 # Create processed predictors
 trnXSDI <- predict(trnXSDpp, newdata = trnXSD)
 ```
-
 ```{r runModel1Sev}
-trC <- trainControl(method = 'none')
+trC <- trainControl(method = 'none', summaryFunction = defaultSummary,
+                    classProbs = FALSE)
 set.seed(878)
 m1SevFit <- train(x = trnXSDI, y = trnSev, trControl = trC,
                   method = 'glmStepAIC', family = gaussian, direction = 'both',
@@ -563,73 +558,62 @@ perform the imputation. However, we can say that positive coefficients represent
 the same imputations will be done and the results will be predicted on the
 normal dollar scale.
 
-The predictive variables with the greatest effect on claim size are `OLD_CLAIM`,
-`HOME_VAL`, and `BLUEBOOK`. The first and third make the most sense. One who has
-had larger claims in the past is likely to have larger claims in the future.
-Also, the claim for damages is very strongly correlated with the value of the
-vehicle. `HOME_VAL` is a bit strange. Perhaps it's serving as a proxy for
-purchased coverage limit. Maybe people with more expensive homes, who buy larger
-limits on their homeowners policies, also purchase larger limits on their
-vehicular polices.
-
-The interaction between `INCOME` and `HOME_VAL` serves to temper the effect of
-`HOME_VAL`. Similarly for the interaction between `OLDCLAIM` and `CLM_FREQ`.
+Unlike the frequency model, many of the resulting predictors are not significant
+at even the 10% level. What this may be telling us is that a linear regression is
+***not*** the proper model for this analysis, and the algorithm is struggling to
+add non-linearity via the interactions. In practice, at the very least a GLM
+with a gamma link would be tried or, more sophisticated predictive models such
+as tree-based ones would be investigated. Most likely, MLE would be used to
+estimate severity and a hierarchial contingent stocahstic cash flow model would
+be built such that given a claim, a loss would be generated from a much more
+amenable distribution, such as a Pareto or a Burr.
 
 #### Variable Importance
 In terms of variable importance, it can be estimated from the the last trace of
-the stepping procedure shown below. There are only eight variables in the model,
-and in order of AIC contribution they are `BLUEBOOK`, `OLDCLAIM`, `HOME_VAL`,
-`INCOME:HOME_VAL`, `CAR_USE.Commercial`, `OLDCLAIM:CLM_FREQ`, `MSTATUS.Yes`, and
-` REVOKED.Yes`.
+the stepping procedure shown below. The further down the list a variable
+preceded by a `-` is, the more drastic of an effect its removal would have on
+the model AIC.
 
 ```
-                                      Df   Deviance   AIC
-<none>                                   9.5456e+10 31329
-- REVOKED.Yes                          1 9.5604e+10 31329
-+ JOB.Manager                          1 9.5357e+10 31329
-- MSTATUS.Yes                          1 9.5620e+10 31330
-+ CAR_AGE                              1 9.5370e+10 31330
-+ `MSTATUSYes:SEXF`                    1 9.5382e+10 31330
-- `OLDCLAIM:CLM_FREQ`                  1 9.5636e+10 31330
-- CAR_USE.Commercial                   1 9.5639e+10 31330
-+ SEX.F                                1 9.5389e+10 31330
-+ JOB.Professional                     1 9.5391e+10 31330
-+ CAR_TYPE.Pickup                      1 9.5400e+10 31330
-+ MVR_PTS                              1 9.5402e+10 31330
-+ CAR_TYPE.Van                         1 9.5403e+10 31330
-+ HOMEKIDS                             1 9.5404e+10 31330
-+ CLM_FREQ                             1 9.5420e+10 31330
-+ `CAR_USECommercial:URBANICITYUrban`  1 9.5426e+10 31330
-+ RED_CAR.yes                          1 9.5430e+10 31331
-+ JOB.Student                          1 9.5432e+10 31331
-- `INCOME:HOME_VAL`                    1 9.5686e+10 31331
-+ EDUCATION.Masters                    1 9.5435e+10 31331
-- HOME_VAL                             1 9.5695e+10 31331
-+ PARENT1.Yes                          1 9.5442e+10 31331
-+ JOB.Clerical                         1 9.5445e+10 31331
-+ `CAR_TYPE.Panel Truck`               1 9.5446e+10 31331
-- OLDCLAIM                             1 9.5700e+10 31331
-+ `EDUCATION.High School`              1 9.5446e+10 31331
-+ OWN.Yes                              1 9.5447e+10 31331
-+ TRAVTIME                             1 9.5448e+10 31331
-+ `INCOME:HOME_VAL:BLUEBOOK`           1 9.5450e+10 31331
-+ `JOB.Home Maker`                     1 9.5450e+10 31331
-+ URBANICITY.Urban                     1 9.5453e+10 31331
-+ `INCOME:BLUEBOOK`                    1 9.5454e+10 31331
-+ AGE                                  1 9.5454e+10 31331
-+ `HOME_VAL:BLUEBOOK`                  1 9.5455e+10 31331
-+ `JOB.Blue Collar`                    1 9.5455e+10 31331
-+ `CAR_TYPE.Sports Car`                1 9.5455e+10 31331
-+ KIDSDRIV                             1 9.5456e+10 31331
-+ JOB.Lawyer                           1 9.5456e+10 31331
-+ EDUCATION.Bachelors                  1 9.5456e+10 31331
-+ YOJ                                  1 9.5456e+10 31331
-+ CAR_TYPE.SUV                         1 9.5456e+10 31331
-+ INCOME                               1 9.5456e+10 31331
-+ `KIDSDRIV:HOMEKIDS`                  1 9.5456e+10 31331
-+ TIF                                  1 9.5456e+10 31331
-+ EDUCATION.PhD                        1 9.5456e+10 31331
-- BLUEBOOK                             1 9.6115e+10 31337
+                       Df   Deviance   AIC
+<none>                    9.5799e+10 31328
+- CAR_AGE               1 9.5927e+10 31328
+- OWN.Yes               1 9.5938e+10 31329
++ JOB.Manager           1 9.5696e+10 31329
+- SEX.F                 1 9.5953e+10 31329
+- MSTATUS.Yes           1 9.5960e+10 31329
++ MVR_PTS               1 9.5712e+10 31329
++ CAR_USE.Commercial    1 9.5729e+10 31329
++ REVOKED.Yes           1 9.5735e+10 31329
++ CAR_TYPE.Pickup       1 9.5748e+10 31330
++ JOB.Professional      1 9.5754e+10 31330
++ CAR_TYPE.Van          1 9.5757e+10 31330
++ HOMEKIDS              1 9.5763e+10 31330
++ CAR_TYPE.PanelTruck   1 9.5769e+10 31330
++ JOB.Student           1 9.5778e+10 31330
++ CLM_FREQ              1 9.5779e+10 31330
++ CAR_TYPE.SUV          1 9.5784e+10 31330
++ EDUCATION.Bachelors   1 9.5787e+10 31330
++ CAR_TYPE.SportsCar    1 9.5787e+10 31330
++ TRAVTIME              1 9.5788e+10 31330
++ PARENT1.Yes           1 9.5788e+10 31330
++ EDUCATION.HighSchool  1 9.5789e+10 31330
++ JOB.BlueCollar        1 9.5789e+10 31330
++ JOB.HomeMaker         1 9.5790e+10 31330
++ INCOME                1 9.5793e+10 31330
++ JOB.Lawyer            1 9.5793e+10 31330
++ OLDCLAIM              1 9.5794e+10 31330
++ TIF                   1 9.5795e+10 31330
++ KIDSDRIV              1 9.5796e+10 31330
++ YOJ                   1 9.5796e+10 31330
++ EDUCATION.PhD         1 9.5796e+10 31330
++ EDUCATION.Masters     1 9.5797e+10 31330
++ JOB.Clerical          1 9.5797e+10 31330
++ AGE                   1 9.5797e+10 31330
++ HOME_VAL              1 9.5797e+10 31330
++ URBANICITY.Urban      1 9.5798e+10 31330
++ RED_CAR.yes           1 9.5798e+10 31330
+- BLUEBOOK              1 9.6748e+10 31341
 ```
 
 # SELECT MODELS
@@ -658,10 +642,11 @@ sevCompTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
 # Model 1 Frequency:: process validation data similar to training data
 tstFreq <- factor(tstX$TARGET_FLAG, levels = c(0, 1),
                   labels = c("NoClaim", "Claim"))
-tstDumFreq <- dummyVars(TARGET_FLAG ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
-                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
-                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
-                          TARGET_AMT,
+tstDumFreq <- dummyVars(TARGET_FLAG ~ . +
+                          OWN * HOME_VAL * INCOME +
+                          CLM_FREQ * OLDCLAIM * MVR_PTS +
+                          CAR_USE * URBANICITY -
+                         INDEX - TARGET_AMT,
                         fullRank = TRUE, data = tstX)
 tstXFD <- predict(tstDumFreq, newdata = tstX)
 tstXFDpp <- preProcess(tstXFD, method = c('nzv', 'knnImpute'),
@@ -678,6 +663,7 @@ freqCompTable[1, 2] <- m1FACC <- sum(diag(m1FCM$table)) / sum(m1FCM$table)
 freqCompTable[1, 3] <- m1FF1 <- m1FCM$byClass[7]
 freqCompTable[1, 4] <- m1FAUC <- auc(response = tstFreq,
                                      predictor = m1FpredProb[, 1])
+m1FCM$table
 ```
 
 Frequency Model 1  returns an accuracy of `r round(m1FACC, 4)`, an F1 score of
@@ -690,11 +676,8 @@ Frequency Model 1  returns an accuracy of `r round(m1FACC, 4)`, an F1 score of
 tstSev <- tstX[TARGET_AMT > 0, TARGET_AMT]
 nobstst <- length(tstSev)
 np <- summary(m1SevFit$finalModel)$df[3]
-tstDumSev <- dummyVars(TARGET_AMT ~ . + OWN * HOME_VAL + KIDSDRIV * HOMEKIDS +
-                          HOME_VAL * INCOME * BLUEBOOK + CLM_FREQ * OLDCLAIM +
-                          MSTATUS * SEX + CAR_USE * URBANICITY - INDEX -
-                          TARGET_FLAG,
-                        fullRank = TRUE, data = tstX[TARGET_AMT > 0])
+tstDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
+                       data = tstX[TARGET_AMT > 0])
 tstXSD <- predict(tstDumSev, newdata = tstX[TARGET_AMT > 0])
 tstXSDpp <- preProcess(tstXSD, method = c('nzv', 'knnImpute'),
                        k = 3, knnSummary = median)
@@ -702,7 +685,6 @@ tstXSDI <- predict(tstXSDpp, newdata = tstXSD)
 
 # Model 1 Severity: predict on validation data
 m1Spred <- predict(m1SevFit, newdata = tstXSDI)
-
 # Model 1 Severity: Calculate accuracy statistics
 m1Ssum <- postResample(m1Spred, tstSev)
 sevCompTable[1, 2] <- m1SRMSE <- m1Ssum[1]
