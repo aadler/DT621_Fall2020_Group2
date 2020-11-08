@@ -69,7 +69,6 @@ ntrobs <- dim(DT)[[1]]
 # Get the names of the variables and which ones are numeric
 nmtrn <- names(DT)
 nmtrnNUM <- names(DT[, .SD, .SDcols = sapply(DT, is.numeric)])
-nmtrnDUB <- names(DT[, .SD, .SDcols = sapply(DT, is.double)])
 nmtrnFAC <- setdiff(nmtrn, nmtrnNUM)
 # Drop INDEX and target variables from name list
 nmtrnNUM <- nmtrnNUM[-(1:3)]
@@ -820,7 +819,7 @@ For that *classification* algorithm, we will look at accuracy, AUC, and F1, and
 select the model which performs best two out of three in those metrics. For the
 *regression* algorithm, we will look at RMSE and MAE (since the values must
 be positive) and select the model which performs best on both, Ties will be
-broken by adjusted \(R^2\).
+broken by \(R^2\).
 
 ```{r setUpCompTables}
 # Create comparison tables
@@ -831,7 +830,7 @@ freqCompTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
 sevCompTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
                            RMSE = double(3),
                            MAE = double(3),
-                           adjR2 = double(3))
+                           R2 = double(3))
 ```
 
 ## Model 1
@@ -873,8 +872,6 @@ Frequency Model 1  returns an accuracy of `r round(m1FACC, 4)`, an F1 score of
 ```{r validateM1S}
 # Model 1 Severity: process validation data similar to training data
 tstSev <- tstX[TARGET_AMT > 0, TARGET_AMT]
-nobstst <- length(tstSev)
-np <- summary(m1SevFit$finalModel)$df[3]
 tstDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
                        data = tstX[TARGET_AMT > 0])
 tstXSD <- predict(tstDumSev, newdata = tstX[TARGET_AMT > 0])
@@ -888,12 +885,11 @@ m1Spred <- predict(m1SevFit, newdata = tstXSDI)
 m1Ssum <- postResample(m1Spred, tstSev)
 sevCompTable[1, 2] <- m1SRMSE <- m1Ssum[1]
 sevCompTable[1, 3] <- m1SMAE <- m1Ssum[3]
-m1SAR2 <- 1 - (1 - m1Ssum[2]) * (nobstst - 1) / (nobstst - np - 1)
-sevCompTable[1, 4] <- m1SAR2
+sevCompTable[1, 4] <- m1SR2 <- m1Ssum[2]
 ```
 
 Severity Model 1  returns an RMSE of `r round(m1SRMSE, 1)`, an MAE of
-`r round(m1SMAE, 1)`, and an adjusted \(R^2\) of `r round(m1SAR2, 4)`.
+`r round(m1SMAE, 1)`, and an \(R^2\) of `r round(m1SR2, 4)`.
 
 ## Model 2
 ### Frequency Model
@@ -931,11 +927,11 @@ m2Spred <- predict(m2SevFit, newdata = m2.test.p)
 m2Ssum <- postResample(m2Spred, tstSev)
 sevCompTable[2, 2] <- m2SRMSE <- RMSE(m2Spred, m2.test.r)
 sevCompTable[2, 3] <- m2SMAE <- MAE(m2Spred, m2.test.r)
-sevCompTable[2, 4] <- m2SAR2 <- R2(m2Spred, m2.test.r)
+sevCompTable[2, 4] <- m2SR2 <- R2(m2Spred, m2.test.r)
 ```
 
 Severity Model 2 returns an RMSE of `r round(m2SRMSE, 1)`, an MAE of
-`r round(m2SMAE, 1)`, and an adjusted \(R^2\) of `r round(m2SAR2, 4)`.
+`r round(m2SMAE, 1)`, and an \(R^2\) of `r round(m2SR2, 4)`.
 
 
 ## Model 3
