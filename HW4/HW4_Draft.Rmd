@@ -365,25 +365,22 @@ approach, Model Set #2 elected to fill in missing values of a continuous
 variable by using the predictive mean matching imputation method. Moreover,
 there will be the derivation of three new binary factor variables. 
 
-* `AGE`  
-  + Since the data set is comprised of auto insurance policyholder information,
-  the missing `AGE` values required imputation. However, given the relatively
-  small number of missing values, imputation by predictive mean matching is
-  conducted.
-
-* `HOME_VAL`  
-  + A `HOME_VAL` response of '0' makes it understandable to assume that those
-  missing entries could indicate that the policyholder is a renter rather than a
-  homeowner. Therefore, missing values were replaced with zeroes. The new `OWN`
-  variables created in Model Set #1 is kept in Model Set #2.
-
-* `CAR_AGE`, `INCOME` & `YOJ`  
-  + Because there is a larger number of missing values (NA’s) were identified, 
-  imputation by predictive mean matching is conducted. 
-
-  + Moreover, there is a single negative value ('-3') for `CAR_AGE` which seemed 
-  implausible and was assumed to be a typographical error. Thus, the absolute
-  value of `CAR_AGE` is taken.
+  * `AGE`  
+    * Since the data set is comprised of auto insurance policyholder information,
+    the missing `AGE` values required imputation. However, given the relatively
+    small number of missing values, imputation by predictive mean matching is
+    conducted.
+  * `HOME_VAL`  
+    * A `HOME_VAL` response of '0' makes it understandable to assume that those
+    missing entries could indicate that the policyholder is a renter rather than
+    a homeowner. Therefore, missing values were replaced with zeroes. The new
+    `OWN` variables created in Model Set #1 is kept in Model Set #2.
+  * `CAR_AGE`, `INCOME` & `YOJ`
+    * Because there is a larger number of missing values (NA’s) were identified,
+    imputation by predictive mean matching is conducted.
+    * Moreover, there is a single negative value ('-3') for `CAR_AGE` which
+    seemed implausible and was assumed to be a typographical error. Thus, the
+    absolute value of `CAR_AGE` is taken.
 
 ### New Variables  
 For Model Set #2, new factor variables ($VARIABLE`.f`) were create as a way to 
@@ -391,24 +388,21 @@ better capture policyholder's profile in the binary logistic regression modeling
 process. 
 
 * `CAR_AGE.f`  
-  + Because `CAR_AGE` is dominated by values of 1 (i.e. car being one year old
+  * Because `CAR_AGE` is dominated by values of 1 (i.e. car being one year old
   or less), the `CAR_AGE.f` variable is derived as a factor variable to be used
   during the binary logistic regression modeling process. Therefore, it is
   interpreted as:
-
-    `CAR_AGE.f` = 0: The vehicle is 1 year old or less.  
-    `CAR_AGE.f` = 1: The vehicle is more than a 1-year-old.
-
+    * `CAR_AGE.f` = 0: The vehicle is 1 year old or less.
+    * `CAR_AGE.f` = 1: The vehicle is more than a 1-year-old.
 * `HOMEKIDS.f` & `KIDSDRIV.f` 
-   + Both the `HOMEKIDS` and `KIDSDRIV` variables indicated that large
+   * Both the `HOMEKIDS` and `KIDSDRIV` variables indicated that large
    percentages of the values of each were 0. Therefore, both variables were
    converted to binary variables. The following is their binary interpretations:
-
-      `HOMEKIDS.f` = 0: The policyholder has no child living at home.  
-      `HOMEKIDS.f` = 1: The policyholder has 1 or more children living at home.  
-      `KIDSDRIV.f` = 0: No teenage drivers use the policyholder’s insured
-      vehicle.  
-      `KIDSDRIV.f` = 1: One or more teenage drivers use the policyholder’s
+     * `HOMEKIDS.f` = 0: The policyholder has no child living at home.
+     * `HOMEKIDS.f` = 1: The policyholder has 1 or more children living at home.
+     * `KIDSDRIV.f` = 0: No teenage drivers use the policyholder’s insured
+      vehicle.
+     * `KIDSDRIV.f` = 1: One or more teenage drivers use the policyholder’s
       insured vehicle. 
       
 ```{r m2clean}
