@@ -16,15 +16,17 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 # Load necessary libraries
-library(corrplot)
 library(ggplot2)
 library(scales)
 library(knitr)
 library(caret)
 library(RANN)
 library(pROC)
-library(data.table)
 library(mice)
+library(arm)
+library(corrplot)
+library(data.table)
+
 
 # Set master seed
 set.seed(71554)
@@ -249,7 +251,7 @@ The corrgram below graphically represents the correlations between the numeric
 predictor variables, when ignoring the missing variables.
 
 ```{r corrgram, fig.width=6, fig.height=4}
-corrplot(cor(DT[, ..nmtrnNUM], use = 'complete.obs'),
+corrplot::corrplot(cor(DT[, ..nmtrnNUM], use = 'complete.obs'),
          method = 'ellipse', type = 'lower', order = 'hclust',
          hclust.method = 'ward.D2')
 ```
@@ -315,10 +317,11 @@ model must perforce be trained on data for which a claim occurred. To maintain
 integrity, the split of all the data for frequency will be honored for severity.
 The 70/30 split will be honored as all claims with a `TARGET_FLAG` of 1 will
 have non-zero `TARGET_AMT`. However, there will be no guarantee that the
-*distribution* of the loss conditional on the event in the validation set will be
-similar to the training set as a whole.
+*distribution* of the loss conditional on the event in the validation set will
+be similar to the training set as a whole.
 
 ```{r trainTestSplit}
+# Create training and testing split
 set.seed(642)
 trnIDX <- createDataPartition(DT$TARGET_FLAG, p = 0.7)
 trnX <- DT[trnIDX$Resample1, ]
@@ -346,7 +349,7 @@ between this value and the actual value. This would be much more effective in a
 decision tree framework, but that is not available.
 
 ```{r model1addVars}
-# Add OWN variable for model set 1
+# Model Set 1: Add OWN variable
 trnX[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0),
                      levels = c(0, 1), labels = c('No', 'Yes'))]
 tstX[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0),
@@ -355,58 +358,61 @@ tstX[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0),
 
 ## Model Set #2  
 ### Missing Data  
-
-Like Model Set #1, the data preparation efforts for Model Set #2 also includes the 
-imputation of missing values for the predictor variables. However, because it combines 
-the standard linear regression and the nearest-neighbor imputation approach, Model Set #2 
-elected to fill in missing values of a continuous variable by using the predictive mean 
-matching imputation method. Moreover, there will be the derivation of three new binary 
-factor variables. 
+Like Model Set #1, the data preparation efforts for Model Set #2 also includes
+the imputation of missing values for the predictor variables. However, because
+it combines the standard linear regression and the nearest-neighbor imputation
+approach, Model Set #2 elected to fill in missing values of a continuous
+variable by using the predictive mean matching imputation method. Moreover,
+there will be the derivation of three new binary factor variables. 
 
 * `AGE`  
-  + Since the data set is comprised of auto insurance policyholder information, the 
-  missing `AGE` values required imputation. However, given the relatively small number 
-  of missing values, imputation by predictive mean matching is conducted.
+  + Since the data set is comprised of auto insurance policyholder information,
+  the missing `AGE` values required imputation. However, given the relatively
+  small number of missing values, imputation by predictive mean matching is
+  conducted.
 
 * `HOME_VAL`  
-  + A `HOME_VAL` response of '0' makes it understandable to assume that those missing 
-  entries could indicate that the policyholder is a renter rather than a homeowner. 
-  Therefore, missing values were replaced with zeroes. The new `OWN` variables created 
-  in Model Set #1 is kept in Model Set #2.
+  + A `HOME_VAL` response of '0' makes it understandable to assume that those
+  missing entries could indicate that the policyholder is a renter rather than a
+  homeowner. Therefore, missing values were replaced with zeroes. The new `OWN`
+  variables created in Model Set #1 is kept in Model Set #2.
 
 * `CAR_AGE`, `INCOME` & `YOJ`  
   + Because there is a larger number of missing values (NA’s) were identified, 
   imputation by predictive mean matching is conducted. 
 
   + Moreover, there is a single negative value ('-3') for `CAR_AGE` which seemed 
-  implausible and was assumed to be a typographical error. Thus, the absolute value 
-  of `CAR_AGE` is taken.
+  implausible and was assumed to be a typographical error. Thus, the absolute
+  value of `CAR_AGE` is taken.
 
 ### New Variables  
-
-For Model Set #2, new factor variables ($VARIABLE`.f`) were create as a way to better 
-capture policyholder's profile in the binary logistic regression modeling process. 
+For Model Set #2, new factor variables ($VARIABLE`.f`) were create as a way to 
+better capture policyholder's profile in the binary logistic regression modeling
+process. 
 
 * `CAR_AGE.f`  
-  + Because `CAR_AGE` is dominated by values of 1 (i.e. car being one year old or less), 
-  the `CAR_AGE.f` variable is derived as a factor variable to be used during the binary 
-  logistic regression modeling process. Therefore, it is interpreted as:
+  + Because `CAR_AGE` is dominated by values of 1 (i.e. car being one year old
+  or less), the `CAR_AGE.f` variable is derived as a factor variable to be used
+  during the binary logistic regression modeling process. Therefore, it is
+  interpreted as:
 
     `CAR_AGE.f` = 0: The vehicle is 1 year old or less.  
     `CAR_AGE.f` = 1: The vehicle is more than a 1-year-old.
 
 * `HOMEKIDS.f` & `KIDSDRIV.f` 
-   + Both the `HOMEKIDS` and `KIDSDRIV` variables indicated that large percentages of the 
-   values of each were 0. Therefore, both variables were converted to binary variables. 
-   The following is their binary interpretations:
+   + Both the `HOMEKIDS` and `KIDSDRIV` variables indicated that large
+   percentages of the values of each were 0. Therefore, both variables were
+   converted to binary variables. The following is their binary interpretations:
 
       `HOMEKIDS.f` = 0: The policyholder has no child living at home.  
       `HOMEKIDS.f` = 1: The policyholder has 1 or more children living at home.  
-      `KIDSDRIV.f` = 0: No teenage drivers use the policyholder’s insured vehicle.  
-      `KIDSDRIV.f` = 1: One or more teenage drivers use the policyholder’s insured vehicle. 
+      `KIDSDRIV.f` = 0: No teenage drivers use the policyholder’s insured
+      vehicle.  
+      `KIDSDRIV.f` = 1: One or more teenage drivers use the policyholder’s
+      insured vehicle. 
       
 ```{r m2clean}
-# Clean Training set
+# Model 2: Clean Training set
 m2.train.X <- trnX
 m2.train.X$HOME_VAL[is.na(m2.train.X$HOME_VAL)] <- 0
 m2.train.X$OWN[is.na(m2.train.X$OWN)] <- "No"
@@ -469,7 +475,7 @@ initial interactions considered will be:
    * Represents increased risk of location
 
 ```{r model1DummyFreq}
-# Cast target as factor for caret purposes
+# Model Set 1: Cast target as factor for caret purposes
 trnFreq <- factor(trnX$TARGET_FLAG, levels = c(0, 1),
                   labels = c("NoClaim", "Claim"))
 # Set up dummy variables
@@ -492,7 +498,7 @@ occur in the call to `train`, it will be separated here for clarity. The actual
 code may be found in the CODE APPENDIX.
 
 ```{r model1RunFreq}
-# preProcess with near-zero value and kNN imputation
+# Model Set 1: preProcess with near-zero value and kNN imputation
 trnXFDpp <- preProcess(trnXFD, method = c('nzv', 'knnImpute'),
                        k = 3, knnSummary = median)
 # Create processed predictors
@@ -502,7 +508,7 @@ trC <- trainControl(method = 'none',            # Using StepAIC
                     summaryFunction = prSummary # Precision/Recall
 )
 set.seed(487)
-# Train Model
+# Model Set 1: Train Model
 m1FreqFit <- train(x = trnXFDI, y = trnFreq, trControl = trC,
                    method = 'glmStepAIC', family = binomial(link = 'logit'),
                    direction = 'both', trace = 0)
@@ -616,7 +622,7 @@ starting with all the predictors. Experimentation with interactions only had
 worse effects, so no interaction will be considered.
 
 ```{r model1DummySev}
-# Extract those observations with values > 0
+# Model Set 1: Extract those observations with values > 0
 trnSev <- trnX[TARGET_AMT > 0, TARGET_AMT]
 # Set up dummy variables
 trnDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
@@ -630,6 +636,7 @@ trnXSDpp <- preProcess(trnXSD, method = c('nzv', 'knnImpute'),
 trnXSDI <- predict(trnXSDpp, newdata = trnXSD)
 ```
 ```{r runModel1Sev}
+# Model Set 1: Train Model
 trC <- trainControl(method = 'none', summaryFunction = defaultSummary,
                     classProbs = FALSE)
 set.seed(878)
@@ -659,9 +666,9 @@ at even the 10% level. What this may be telling us is that linear regression is
 add non-linearity via the interactions. In practice, at the very least a GLM
 with a gamma link would be tried or, more sophisticated predictive models such
 as tree-based ones would be investigated. Most likely, MLE would be used to
-estimate the severity and a hierarchial contingent stochastic cash flow model would
-be built such that given a claim, a loss would be generated from a much more
-amenable distribution, such as a Pareto or a Burr.
+estimate the severity and a hierarchial contingent stochastic cash flow model
+would be built such that given a claim, a loss would be generated from a much
+more amenable distribution, such as a Pareto or a Burr.
 
 #### Variable Importance
 In terms of variable importance, it can be estimated from the last trace of
@@ -713,16 +720,16 @@ the model AIC.
 
 ## Model Set #2
 ### Frequency Model
-
-The frequency model is built to determine whether a vehicle is likely to crash. In Model 
-Set #2, to work with complete separation in the logistic regression model, a Bayesian analysis 
-is fitted. The Bayesian statistical model returns samples of the parameters of interest (the
-"posterior" distribution) based on some "prior" distribution which is then updated by the 
-data. Here, Cauchy distribution is accepted as a prior for parameters of the generalized 
-linear model.
+The frequency model is built to determine whether a vehicle is likely to crash.
+In Model Set #2, to work with complete separation in the logistic regression
+model, a Bayesian analysis is fitted. The Bayesian statistical model returns
+samples of the parameters of interest (the "posterior" distribution) based on
+some "prior" distribution which is then updated by the data. Here, Cauchy
+distribution is accepted as a prior for parameters of the generalized linear
+model.
 
 ```{r model2RunFreq}
-# Train Model Set #2
+# Model Set 2: Train Frequency Model
 set.seed(525)
 m2FreqFit <- train(x = m2.train.p, y = m2.train.r, 
                    trControl = trainControl(method = 'repeatedcv',
@@ -735,48 +742,53 @@ kable(summary(m2FreqFit$finalModel)$coefficients, digits = 3L,
 ```
 
 #### Coefficient Discussion 
+Contributing coefficients are those which lie within the 95% level of
+significance. A positive coefficient indicates that as the value of the
+predictor increases, the response variable also tends to increase. A negative
+coefficient suggests that as the predictor increases, the response variable
+tends to decrease. 
 
-Contributing coefficients are those which lie within the 95% level of significance. A 
-positive coefficient indicates that as the value of the predictor increases, the response 
-variable also tends to increase. A negative coefficient suggests that as the predictor 
-increases, the response variable tends to decrease. 
+Immediately, the model follows the suggested theories behind specific variables.
+For example, policyholders who are married, have a higher income and an old
+claim is less likely to be involved in an accident. Moreover, more educated, at
+least with a Bachelor’s degree, policyholders drive more safely. The higher the
+bluebook value of the policyholder’s vehicle, it decreases the probability of a
+claim. This makes sense naturally since more intelligent individuals would seek
+to protect relatively valuable assets they are responsible for. Last, the longer
+a policyholder has been a customer of the company, the less likely they are to
+be involved in an accident. Since insurance companies would typically impose
+larger rates or cancel the policies of careless drivers.
 
-Immediately, the model follows the suggested theories behind specific variables. For example,
-policyholders who are married, have a higher income and an old claim is less likely to be 
-involved in an accident. Moreover, more educated, at least with a Bachelor’s degree, 
-policyholders drive more safely. The higher the bluebook value of the policyholder’s vehicle, 
-it decreases the probability of a claim. This makes sense naturally since more intelligent 
-individuals would seek to protect relatively valuable assets they are responsible for. Last, 
-the longer a policyholder has been a customer of the company, the less likely they are to be 
-involved in an accident. Since insurance companies would typically impose larger rates or 
-cancel the policies of careless drivers.
-
-On the contrary, and unsurprising, policyholders who have previously had their driver’s licenses 
-revoked increases the probability of a claim. This parallels the result that the more motor 
-vehicle record points a policyholder has gained, they are assumed to be unsafe drivers and are 
-more likely to be involved in an accident. If a policyholder lives in an urban area, they are
-prone to an accident since traffic and pedestrian congestion are more common. Another expected 
-result, is that the longer a policyholder’s commute to work is, there is an increased likelihood 
-of a driver being involved in an accident. The last connection that can be inferred is that 
-drivers of a larger type of vehicles are more prone to accidents than are drivers of other 
-types of vehicles, with minivans being the least prone. The results seem to suggest that owners
-of sports cars and SUVs are riskier types of drivers. Interestingly, commercial usage of 
-vehicle present critical reason for more frequent accidents to occur because of driver error 
-or non-performance, and failure to maintain vehicle causing issues or malfunction.
+On the contrary, and unsurprising, policyholders who have previously had their
+driver’s licenses revoked increases the probability of a claim. This parallels
+the result that the more motor vehicle record points a policyholder has gained,
+they are assumed to be unsafe drivers and are more likely to be involved in an
+accident. If a policyholder lives in an urban area, they are prone to an
+accident since traffic and pedestrian congestion are more common. Another
+expected result, is that the longer a policyholder’s commute to work is, there
+is an increased likelihood of a driver being involved in an accident. The last
+connection that can be inferred is that drivers of a larger type of vehicles are
+more prone to accidents than are drivers of other types of vehicles, with
+minivans being the least prone. The results seem to suggest that owners of
+sports cars and SUVs are riskier types of drivers. Interestingly, commercial
+usage of vehicle present critical reason for more frequent accidents to occur
+because of driver error or non-performance, and failure to maintain vehicle
+causing issues or malfunction.
 
 ### Severity Model  
-
-Similar to Model Set #1, the multivariate linear regression model used the data set’s 
-`TARGET_AMT` attribute as the response variable and the data was split to include only those
-records that have a claim. The elastic net is a regularized regression method that linearly 
-combines the L1 and L2 regularization penalties. Predictors, specifically qualitative variables,
-were automatically transformed into dummy variables, which is important because `glmnet()` can 
-only take numerical, quantitative inputs. Cross-validation is done on different combinations 
-of $\lambda_1$ and $\lambda_2$ to find the best values. The hybrid elastic net regression is 
-especially good at dealing with situations when there are correlations between parameters. 
+Similar to Model Set #1, the multivariate linear regression model used the data
+set’s `TARGET_AMT` attribute as the response variable and the data was split to
+include only those records that have a claim. The elastic net is a regularized
+regression method that linearly combines the L1 and L2 regularization penalties.
+Predictors, specifically qualitative variables, were automatically transformed
+into dummy variables, which is important because `glmnet()` can only take
+numerical, quantitative inputs. Cross-validation is done on different
+combinations of $\lambda_1$ and $\lambda_2$ to find the best values. The hybrid
+elastic net regression is especially good at dealing with situations when there
+are correlations between parameters. 
 
 ```{r model2RunSev}
-# Train Model Set #2
+# Model Set 2: Train Severity Model
 temp <- split(m2.train.X, m2.train.X$TARGET_AMT > 0)[[2]] 
 m2.train.r <- temp$TARGET_AMT
 m2.train.p <- model.matrix(temp$TARGET_AMT~., temp[, -c(1:3)])[,-1]
@@ -795,16 +807,18 @@ kable(data.frame(cbind(variables = coeffs@Dimnames[[1]][coeffs@i+1],
 ```
 
 #### Coefficient Disucssion
-
-Once again, contributing coefficients are those which lie within the 95% level of significance. 
-In this case, the linear model reduced the number of predictors that can predict the cost given 
-an accident. The model fits extremely poor and does a mediocre job at explaining the variability 
-within the training data. If interpretations are still to be made, first, the intercept itself 
-suggests that with no information on the policyholder, given a vehicle accident, the likely claim 
-value to the individual is $5,728. The other predictors suggest that the higher the bluebook value 
-of the policyholder’s vehicle, the larger the insurance payout will be in the event of an accident. 
-If they use the vehicle for commercial, they will also have a larger claim amount. While being a 
-female resulted as a significant variable, its coefficient is near zero and will be ignored.
+Once again, contributing coefficients are those which lie within the 95% level
+of significance. In this case, the linear model reduced the number of predictors
+that can predict the cost given an accident. The model fits extremely poor and
+does a mediocre job at explaining the variability within the training data. If
+interpretations are still to be made, first, the intercept itself suggests that
+with no information on the policyholder, given a vehicle accident, the likely
+claim value to the individual is $5,728. The other predictors suggest that the
+higher the bluebook value of the policyholder’s vehicle, the larger the
+insurance payout will be in the event of an accident. If they use the vehicle
+for commercial, they will also have a larger claim amount. While being a female
+resulted as a significant variable, its coefficient is near zero and will be
+ignored.
 
 # SELECT MODELS
 ## Model Selection Criteria
@@ -815,6 +829,7 @@ be positive) and select the model which performs best on both, Ties will be
 broken by adjusted \(R^2\).
 
 ```{r setUpCompTables}
+# Create comparison tables
 freqCompTable <- data.frame(Models = c('Model 1', 'Model 2', 'Model 3'),
                             ACC = double(3),
                             F1 = double(3),
