@@ -16,7 +16,8 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 # Load necessary libraries
-library(tidyverse)
+library(arm)
+library(dplyr)
 library(ggplot2)
 library(scales)
 library(knitr)
@@ -24,7 +25,6 @@ library(caret)
 library(RANN)
 library(pROC)
 library(mice)
-library(arm)
 library(corrplot)
 library(data.table)
 
@@ -449,30 +449,30 @@ m2.test.p <- m2.test.X[, -c(1:3)]
 ## Model Set #3
 ### Missing Data
 Similar to model 2, model set 3 deals with missing numerical data by imputing 
-them using the Multivariate imputation by chained equations (MICE) method. Multiple 
-imputation involves creating multiple predictions for each missing value, helping 
-to account for the uncertainty in the individual imputations. 
+them using the Multivariate imputation by chained equations (MICE) method.
+Multiple imputation involves creating multiple predictions for each missing
+value, helping to account for the uncertainty in the individual imputations. 
 
-One thing to note about Model 3 is that it does *not* assume that an `NA` in 
-the `HOME_VAL` variable is indicative of renting. This is a key difference between
-this model and the previous 2. 
+One thing to note about Model 3 is that it does *not* assume that an `NA` in the
+`HOME_VAL` variable is indicative of renting. This is a key difference between
+this model and the previous two models. 
 
 ```{r m3clean}
 # Model 3 - data transformation
 # MICE imputation on train and test set
-m3train <- complete(mice(data = trnX %>% select(-INDEX), method = "pmm", print=FALSE),3)
+m3train <- complete(mice(data = trnX %>% select(-INDEX),
+                         method = "pmm", print = FALSE), 3)
 m3train$TARGET_FLAG <- factor(m3train$TARGET_FLAG, levels = c(0, 1), 
                      labels = c("NoClaim", "Claim"))
 
-m3test <- complete(mice(data = tstX %>% select(-INDEX), method = "pmm", print=FALSE),3)
+m3test <- complete(mice(data = tstX %>% select(-INDEX),
+                        method = "pmm", print = FALSE), 3)
 m3test$TARGET_FLAG <- factor(m3test$TARGET_FLAG, levels = c(0, 1), 
                      labels = c("NoClaim", "Claim"))
-
 ```
 
-
 # BUILD MODELS
-## Model Set 1
+## Model Set #1
 ### Dummy Variables  
 As there are many factor variables, dummy variables will be created. The target
 variables will be removed and held to the side so as not to contaminate the
@@ -684,7 +684,7 @@ at even the 10% level. What this may be telling us is that linear regression is
 add non-linearity via the interactions. In practice, at the very least a GLM
 with a gamma link would be tried or, more sophisticated predictive models such
 as tree-based ones would be investigated. Most likely, MLE would be used to
-estimate the severity and a hierarchial contingent stochastic cash flow model
+estimate the severity and a hierarchical contingent stochastic cash flow model
 would be built such that given a claim, a loss would be generated from a much
 more amenable distribution, such as a Pareto or a Burr.
 
@@ -850,10 +850,10 @@ all variables in the dataset.
 
 ```{r model3RunBaseLog}
 # Base log model 3
-m3BaseLog <- glm(TARGET_FLAG~., family = binomial, data = m3train %>% select(-TARGET_AMT))
+m3BaseLog <- glm(TARGET_FLAG ~ ., family = binomial,
+                 data = m3train %>% select(-TARGET_AMT))
 kable(summary(m3BaseLog)$coefficients, digits = 3L,
       caption = 'Model 3 - Base Logistic Regression Output')
-
 ```
 
 We can immediately see that a few variables *exceed* the 0.05 p-value threshold
@@ -866,34 +866,34 @@ following variables *removed*: `AGE`, `HOMEKIDS`, `YOJ`, `RED_CAR`, and `CAR_AGE
 ```{r model3RunFreq}
 # Final log model 3
 train_control <- trainControl(method = "cv", number = 10)
-m3FreqFit <- train(TARGET_FLAG ~ KIDSDRIV+INCOME+PARENT1+HOME_VAL+MSTATUS+SEX+EDUCATION+JOB+
-              TRAVTIME+CAR_USE+BLUEBOOK+TIF+CAR_TYPE+OLDCLAIM+CLM_FREQ+REVOKED+MVR_PTS+
-              URBANICITY,
+m3FreqFit <- train(TARGET_FLAG ~ KIDSDRIV + INCOME + PARENT1 + HOME_VAL +
+                     MSTATUS + SEX + EDUCATION + JOB + TRAVTIME + CAR_USE +
+                     BLUEBOOK + TIF + CAR_TYPE + OLDCLAIM + CLM_FREQ + REVOKED +
+                     MVR_PTS + URBANICITY,
               data = m3train %>% select(-TARGET_AMT),
               trControl = train_control,
               method = "glm",
               family=binomial())
 kable(summary(m3FreqFit)$coefficients, digits = 3L,
       caption = 'Model 3 - Final Logistic Regression Output')
-
 ```
 
 #### Coefficient Discussion 
 Some interesting observations from the final results: 
 
-* Living in an urban area has the greatest impact on an individual's 
-likelihood of getting into a crash. This makes sense - urban areas are more 
-crowded than rural areas, so the odds of crashing are higher. 
-* If your car is used for commercial purposes you have a higher probability
-of getting into a crash. 
-* As expected, if you've had your license revoked within the past 7 years, 
-you're more likely to get into a crash. 
-* Being a female makes you less likely to get into a crash. 
-* Having a sports car makes you more likely to get into a crash than having 
-either an SUV, Van, Pickup, or Panel Truck. 
-* Being a manager or doctor make you less likely to get into a car crash. 
-Conversely, you're more likely to crash if you're a student, blue collar worker, 
-clerk, homemaker, professional, or lawyer. 
+  * Living in an urban area has the greatest impact on an individual's
+  likelihood of getting into a crash. This makes sense - urban areas are more 
+  crowded than rural areas, so the odds of crashing are higher.
+  * If your car is used for commercial purposes you have a higher probability of
+  getting into a crash.
+  * As expected, if you've had your license revoked within the past 7 years,
+  you're more likely to get into a crash.
+  * Being a female makes you less likely to get into a crash.
+  * Having a sports car makes you more likely to get into a crash than having 
+  either an SUV, Van, Pickup, or Panel Truck.
+  * Being a manager or doctor make you less likely to get into a car crash.
+  Conversely, you're more likely to crash if you're a student, blue collar
+  worker, clerk, homemaker, professional, or lawyer.
 
 ### Severity Model
 The severity model is used to determine how much the crash will cost the
@@ -904,49 +904,50 @@ damage costs.
 #### Base Model
 We will start with a simple logistic regression model to serve as a baseline.
 This includes all variables in the dataset, but only for the records that have
-a TARGET_AMT > $0. 
+a `TARGET_AMT` > $0. 
 
 ```{r model3RunBaseLin}
 
-m3BaseLin <- lm(TARGET_AMT ~ ., data=m3train %>% filter(TARGET_AMT > 0) %>% select(-TARGET_FLAG))
+m3BaseLin <- lm(TARGET_AMT ~ .,
+                data = m3train %>%
+                  filter(TARGET_AMT > 0) %>%
+                  select(-TARGET_FLAG))
 knitr::kable(summary(m3BaseLin)$coefficients, digits = 3L,
              caption = 'Model 3 - Base Linear Regression Output')
-
 ```
 
-A look at the final output shows us that only 1 variable is deemed
-important (`BLUEBOOK`).
+A look at the final output shows us that only 1 variable is deemed important
+(`BLUEBOOK`).
 
 #### Enhanced Model
-In this case, if we were to use backwards stepwise regression, we would
-be left with a model that is determined by only 1 variable. However,
-intuitively we know that some of the variables are likely to effect
-the final payout. For this reason, we will choose to include: `BLUEBOOK`,
-`CAR_AGE`, and `CAR_TYPE`. 
+In this case, if we were to use backwards stepwise regression, we would be left
+with a model that is determined by only 1 variable. However, intuitively we know
+that some of the variables are likely to effect the final payout. For this
+reason, we will choose to include: `BLUEBOOK`, `CAR_AGE`, and `CAR_TYPE`. 
 
 ```{r model3RunSev}
 
-m3SevFit <- lm(TARGET_AMT~ BLUEBOOK+CAR_AGE+CAR_TYPE, data = m3train %>% filter(TARGET_AMT > 0) %>% select(-TARGET_FLAG))
+m3SevFit <- lm(TARGET_AMT ~ BLUEBOOK + CAR_AGE + CAR_TYPE,
+               data = m3train %>%
+                 filter(TARGET_AMT > 0) %>%
+                 select(-TARGET_FLAG))
 
 knitr::kable(summary(m3SevFit)$coefficients, digits = 3L,
              caption = 'Model 3 - Final Linear Regression Output')
-
 ```
 
 #### Coefficient Disucssion
 The intercept of the final model tells us that the base cost of a crash is a 
 little under $5000. Some results: 
 
-* The positive coefficient for the `BLUEBOOK` variable means that the higher
-the bluebook value for the vehicle, the more the payout will be. This makes
-sense. 
-* The negative coefficient for the `CAR_AGE` variable means that the older
-the vehicle is, the less the payout is. Once again, this makes sense. 
-* Non-intuitively, the positive coefficient on the Van option for the 
-`CAR_TYPE` variable means that van collisions have a higher payout. All 
-other options for this variable (including a sportscar) result in a 
-lower payout. 
-
+  * The positive coefficient for the `BLUEBOOK` variable means that the higher
+  the bluebook value for the vehicle, the more the payout will be. This makes
+  sense. 
+  * The negative coefficient for the `CAR_AGE` variable means that the older the
+  vehicle is, the less the payout is. Once again, this makes sense. 
+  * Non-intuitively, the positive coefficient on the Van option for the
+  `CAR_TYPE` variable means that van collisions have a higher payout. All other
+  options for this variable (including a sports car) result in a lower payout. 
 
 # SELECT MODELS
 ## Model Selection Criteria
@@ -1120,7 +1121,6 @@ kable(freqCompTable, digits = 4L, caption = "Frequency Model Comparison")
 ```{r sevComp}
 kable(sevCompTable, digits = 4L, caption = "Severity Model Comparison")
 ```
-
 
 # PREDICTIONS
 
