@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 # Load necessary libraries
+library(tidyverse)
 library(ggplot2)
 library(scales)
 library(knitr)
@@ -26,8 +27,6 @@ library(mice)
 library(arm)
 library(corrplot)
 library(data.table)
-library(tidyverse)
-
 
 # Set master seed
 set.seed(71554)
