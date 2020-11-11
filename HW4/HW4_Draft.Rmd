@@ -51,18 +51,6 @@ DT[, `:=`(INCOME = as.double(gsub('[$,]', '', INCOME)),
           BLUEBOOK = as.double(gsub('[$,]', '', BLUEBOOK)),
           OLDCLAIM = as.double(gsub('[$,]', '', OLDCLAIM)))]
 
-# Read and process the test/evaluation file
-eval <- fread(paste0(urlRemote, pathGithub, fileTest),
-              colClasses = c(rep('integer', 2L), 'double', rep('integer', 4L),
-                             'double', 'factor', 'double', rep('factor', 4L),
-                             'integer', 'factor', 'double', 'integer',
-                             rep('factor', 2L), 'double', 'integer', 'factor',
-                             rep('integer', 2L), 'factor'))
-eval[, `:=`(INCOME = as.double(gsub('[$,]', '', INCOME)),
-          HOME_VAL = as.double(gsub('[$,]', '', HOME_VAL)),
-          BLUEBOOK = as.double(gsub('[$,]', '', BLUEBOOK)),
-          OLDCLAIM = as.double(gsub('[$,]', '', OLDCLAIM)))]
-
 # Number of training observations
 ntrobs <- dim(DT)[[1]]
 
@@ -641,26 +629,31 @@ worse effects, so no interaction will be considered.
 
 ```{r model1DummySev}
 # Model Set 1: Extract those observations with values > 0
-trnSev <- trnX[TARGET_AMT > 0, TARGET_AMT]
+trnXS <- trnX[TARGET_AMT > 0,
+              ][, `:=`(INDEX = NULL, TARGET_FLAG = NULL)]
+trnYS <- trnXS[, TARGET_AMT]
+
 # Set up dummy variables
-trnDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
-                        fullRank = TRUE, data = trnX[TARGET_AMT > 0])
+trnXDum <- dummyVars(TARGET_AMT ~ ., fullRank = TRUE, data = trnXS)
+
 # Create matrix of dummy values
-trnXSD <- predict(trnDumSev, newdata = trnX[TARGET_AMT > 0])
-# preProcess with near-zero value and kNN imputation
-trnXSDpp <- preProcess(trnXSD, method = c('nzv', 'knnImpute'),
-                       k = 3, knnSummary = median)
+trnXSD <- predict(trnXDum, newdata = trnXS)
+
+# preProcess with near-zero value and kNN imputation using median
+trnXDumPP <- preProcess(trnXSD, method = c('nzv', 'knnImpute'), k = 3,
+                      knnSummary = median)
+
 # Create processed predictors
-trnXSDI <- predict(trnXSDpp, newdata = trnXSD)
+trnXSDImp <- predict(trnXDumPP, newdata = trnXSD)
 ```
 ```{r runModel1Sev}
 # Model Set 1: Train Model
 trC <- trainControl(method = 'none', summaryFunction = defaultSummary,
                     classProbs = FALSE)
 set.seed(878)
-m1SevFit <- train(x = trnXSDI, y = trnSev, trControl = trC,
-                  method = 'glmStepAIC', family = gaussian, direction = 'both',
-                  trace = 0)
+m1SevFit <- train(x = trnXSDImp, y = trnYS, trControl = trC,
+                  method = 'glmStepAIC', family = gaussian(),
+                  direction = 'both', trace = 0)
 kable(summary(m1SevFit)$coefficients, digits = 3L,
       caption = "Model 1 Severity Regression Output")
 ```
@@ -1007,18 +1000,19 @@ Frequency Model 1  returns an accuracy of `r round(m1FACC, 4)`, an F1 score of
 
 ```{r validateM1S}
 # Model 1 Severity: process validation data similar to training data
-tstSev <- tstX[TARGET_AMT > 0, TARGET_AMT]
-tstDumSev <- dummyVars(TARGET_AMT ~ . - INDEX - TARGET_FLAG,
-                       data = tstX[TARGET_AMT > 0])
-tstXSD <- predict(tstDumSev, newdata = tstX[TARGET_AMT > 0])
-tstXSDpp <- preProcess(tstXSD, method = c('nzv', 'knnImpute'),
-                       k = 3, knnSummary = median)
-tstXSDI <- predict(tstXSDpp, newdata = tstXSD)
+tstXS <- tstX[TARGET_AMT > 0
+              ][, `:=`(INDEX = NULL, TARGET_FLAG = NULL)]
+tstYS <- tstXS[, TARGET_AMT]
+tstXDum <- dummyVars(TARGET_AMT ~ ., data = tstXS, fullRank = TRUE)
+tstXSD <- predict(tstXDum, newdata = tstXS)
+tstXDumPP <- preProcess(tstXSD, method = c('nzv', 'knnImpute'), k = 3,
+                      knnSummary = median)
+tstXSDImp <- predict(tstXDumPP, newdata = tstXSD)
 
 # Model 1 Severity: predict on validation data
-m1Spred <- predict(m1SevFit, newdata = tstXSDI)
+m1Spred <- predict(m1SevFit, newdata = tstXSDImp)
 # Model 1 Severity: Calculate accuracy statistics
-m1Ssum <- postResample(m1Spred, tstSev)
+m1Ssum <- postResample(m1Spred, tstYS)
 sevCompTable[1, 2] <- m1SRMSE <- m1Ssum[1]
 sevCompTable[1, 3] <- m1SMAE <- m1Ssum[3]
 sevCompTable[1, 4] <- m1SR2 <- m1Ssum[2]
@@ -1060,7 +1054,7 @@ m2.test.p <- model.matrix(temp$TARGET_AMT~., temp[, -c(1:3)])[,-1]
 m2Spred <- predict(m2SevFit, newdata = m2.test.p)
 
 # Accuracy Statistics
-m2Ssum <- postResample(m2Spred, tstSev)
+m2Ssum <- postResample(m2Spred, tstYS)
 sevCompTable[2, 2] <- m2SRMSE <- RMSE(m2Spred, m2.test.r)
 sevCompTable[2, 3] <- m2SMAE <- MAE(m2Spred, m2.test.r)
 sevCompTable[2, 4] <- m2SR2 <- R2(m2Spred, m2.test.r)
@@ -1102,7 +1096,7 @@ m3testFinal <- m3test %>%
 m3Spred <- predict(m3SevFit, newdata = m3testFinal)
 
 # Model 3 Severity: Calculate accuracy statistics
-m3Ssum <- postResample(m3Spred, tstSev)
+m3Ssum <- postResample(m3Spred, tstYS)
 sevCompTable[3, 2] <- m3SRMSE <- m3Ssum[1]
 sevCompTable[3, 3] <- m3SMAE <- m3Ssum[3]
 sevCompTable[3, 4] <- m3SR2 <- m3Ssum[2]
@@ -1117,13 +1111,184 @@ Severity Model 3 returns an RMSE of `r round(m3SRMSE, 1)`, an MAE of
 kable(freqCompTable, digits = 4L, caption = "Frequency Model Comparison")
 ```
 
+**Frequency Model 3**'s performance on the holdout set was the best in two of
+the three metrics---accuracy and F1---and will be used to predict the frequency
+of a claim on the evaluation set.
+
 ### Severity Model
 ```{r sevComp}
 kable(sevCompTable, digits = 4L, caption = "Severity Model Comparison")
 ```
 
-# PREDICTIONS
+**Severity Model 1**'s performance on the holdout set was the best in two of the
+three metrics---RMSE and \(R^2\)---and will be used to predict the severity for
+claims in the evaluation set for which Model 3 predicts a claim.
 
+However, the performance of this model, or any of the three, is not expected to
+be good, as a linear regression with a normal assumption is most often a poor
+fit to severity data. Compare the distributions of both training and testing
+results for Model 1, ostensibly the best model, on both a real and a log-scale.
+
+```{r badSev, fig.height=4}
+m1trnPred <- predict(m1SevFit, trnXSDImp)
+densDT <- data.table(trainObs = trnYS,
+                     trainPred = m1trnPred,
+                     testObs = tstYS,
+                     testPred = m1Spred)
+densDT <- melt(densDT, variable.factor = FALSE)
+densDT[, `:=`(data = ifelse(substr(variable, 1, 5) == 'train', 'train', 'test'),
+              len =  lapply(variable, nchar))
+              ][, set := ifelse(substr(variable, len, len) == 's',
+                                    'observation', 'prediction')
+                ][, `:=`(variable = NULL, len = NULL)]
+ggplot(densDT, aes(x = value, col = data,  linetype = set)) +
+  geom_density(size = 1) + scale_x_continuous(labels = dollar) +
+  ggtitle("Density on a Normal Scale")
+ggplot(densDT, aes(x = value, col = data, linetype = set)) +
+  geom_density(size = 1) + scale_x_log10(labels = dollar) +
+  ggtitle("Density on a Log Scale")
+```
+
+It is clear that the normal distribution assumption underlying the linear model
+is too restrictive. The variance is too low and the tails are too thin. The
+log-density plot implies a thicker tailed distribution such as a lognormal or a
+Pareto. Nevertheless, we will use Model 3 to predict the losses, understanding
+that it is the best option under the artificial constraints of the problem.[^1]
+
+[^1]: Apologies; one of us is an actuary and this is painful 8-) .
+
+# PREDICTIONS
+For our group, different model sets had the best performance for frequency and
+severity. These models processed the data differently. Therefore, we cannot
+simply use the output from Model 3's frequency predictions as the inputs to
+Model 1's severity. 
+
+What we will do is use Model 3 to determine *which* evaluation observations are
+predicted to have claims and then use those observations to predict severity. In
+other words, the evaluation data will be processed in accordance with Frequency
+Model 3 and the incidents of a claim will be recorded. For those evaluation
+observations which return a claim, their raw data will be processed according to
+Severity Model 1 to return predicted values.
+
+```{r evalProcessClean}
+# Read and process the test/evaluation file
+# Can re-use the name DT for convenience now
+DT <- fread(paste0(urlRemote, pathGithub, fileTest),
+              colClasses = c(rep('integer', 2L), 'double', rep('integer', 4L),
+                             'double', 'factor', 'double', rep('factor', 4L),
+                             'integer', 'factor', 'double', 'integer',
+                             rep('factor', 2L), 'double', 'integer', 'factor',
+                             rep('integer', 2L), 'factor'))
+neval <- dim(DT)[[1]]
+DT[, `:=`(INCOME = as.double(gsub('[$,]', '', INCOME)),
+          HOME_VAL = as.double(gsub('[$,]', '', HOME_VAL)),
+          BLUEBOOK = as.double(gsub('[$,]', '', BLUEBOOK)),
+          OLDCLAIM = as.double(gsub('[$,]', '', OLDCLAIM)))]
+setattr(DT$MSTATUS, 'levels', c('Yes', 'No'))
+setattr(DT$SEX, 'levels', c('M', 'F'))
+setattr(DT$EDUCATION, 'levels', c('<HighSchool', 'Bachelors', 'Masters', 'PhD',
+                                  'HighSchool'))
+setattr(DT$JOB, 'levels', c('Unknown', 'Clerical', 'Doctor', 'HomeMaker',
+                            'Lawyer', 'Manager', 'Professional', 'Student',
+                            'BlueCollar'))
+setattr(DT$CAR_TYPE, 'levels', c('Minivan', 'PanelTruck', 'Pickup',
+                                 'SportsCar', 'Van', 'SUV'))
+
+setattr(DT$URBANICITY, 'levels', c('Urban', 'Rural'))
+
+# Relevel some of the variables to have the default make more sense
+# Set default marital status to unmarried
+set(DT, NULL, 'MSTATUS', relevel(DT$MSTATUS, 'No'))
+# Set default car usage to private
+set(DT, NULL, 'CAR_USE', relevel(DT$CAR_USE, 'Private'))
+# Set default are to rural, making urban a positive? risk factor
+set(DT, NULL, 'URBANICITY', relevel(DT$URBANICITY, 'Rural'))
+```
+
+As there are `r neval` observations, we will not printing them in this document.
+Rather, we will show an estimated frequency rate. The actual observations for
+which claims are predicted may be obtained from the appropriate data object in
+the code, as found in the CODE APPENDIX.
+
+## Evaluation Data Processing and Cleaning
+In this section, the evaluation set will be processed and cleaned as the per the
+training set. The model-specific imputations, variable creations, and
+predictions will be done in their own sections. 
+
+## Frequency
+Missing values will be imputed, with `INDEX` and the two prediction targets
+ignored, of course. Once done, the claim incidents will be predicted.
+```{r evalPredictFreq}
+# Impute the missing values but not INDEX or the values we will be predicting!
+set.seed(94)
+m3eval <- complete(mice(data = DT %>%
+                          select(-c(INDEX, TARGET_FLAG, TARGET_AMT)),
+                        method = "pmm", print = FALSE), 3)
+evalFreqFit <- predict(m3FreqFit, m3eval)
+numPred <- sum(evalFreqFit == "Claim")
+claimRate <- numPred / neval
+claimIDX <- which(evalFreqFit == "Claim")
+```
+
+The model predicts `r numPred` claims out of `r neval` observations for a claim
+rate of `r prettyNum(claimRate * 100, digits = 3L)`%. The actual outcomes are
+stored in the `evalFreqFit` object in the code.
+
+## Severity
+The individual `r numPred` observations for which Model 3 predicted a claim will
+be extracted from the state of the evaluation set prior to Model 3-specific
+adjustments, processed per Severity Model 1, and then the claim values will be
+predicted.
+
+Once again, with so many observations, we will not simply print all `r numPred`.
+Rather, we will provide some summary statistics and graphs of the distribution
+of the claims. The actual claim values can be extracted from the appropriate
+data structure in the code, of course.
+
+```{r evalPredictSev, fig.height=4}
+# Extract the "claim" observations from the data
+evalObs <- DT[claimIDX, ]
+
+# At this point the unneeded columns of INDEX and the 2 targets will be removed
+evalObs[, `:=`(INDEX = NULL, TARGET_FLAG = NULL, TARGET_AMT = NULL)]
+
+# Create the OWN variable
+evalObs[, OWN := factor(ifelse(HOME_VAL > 0, 1, 0), levels = c(0, 1),
+                        labels = c('No', 'Yes'))]
+
+# Set up dummy variables
+evalDumSev <- dummyVars( ~ ., fullRank = TRUE, data = evalObs)
+# Create matrix of dummy values
+evalDumSevMatrix <- predict(evalDumSev, newdata = evalObs)
+# preProcess with near-zero value and kNN imputation
+evalDumSevPP <- preProcess(evalDumSevMatrix, method = c('nzv', 'knnImpute'),
+                           k = 3, knnSummary = median)
+# Create matrix of processed and imputed predictors
+evalDumSevPPI <- predict(evalDumSevPP, newdata = evalDumSevMatrix)
+evalSevFit <- predict(m1SevFit, evalDumSevPPI)
+
+# Summary Statistics
+tabularComp <- data.table(Set = c("Training", "Testing", "PredictedEval"),
+                          Min = c(min(trnYS), min(tstYS), min(evalSevFit)),
+                          Median = c(median(trnYS), median(tstYS),
+                                     median(evalSevFit)),
+                          Max = c(max(trnYS), max(tstYS), max(evalSevFit)),
+                          Mean = c(mean(trnYS), mean(tstYS), mean(evalSevFit)),
+                          SD = c(sd(trnYS), sd(tstYS), sd(evalSevFit)))
+tabularComp[, CV := SD / Mean, by = Set]
+
+ggplot(data.frame(x = evalSevFit), aes(x = x)) + geom_density() +
+  scale_x_continuous(labels = dollar)
+
+knitr::kable(tabularComp, digits = 3L,
+             caption = "Severity Statistics Comparison")
+```
+
+The actual outcomes are stored in the `evalSevFit` object in the code. The table
+and the graph show how the predictions are ***much*** more constrained than
+either the training or testing sets. The means are relatively close, which is
+to be expected when trying to shoehorn non-normal data into a Gaussian
+framework.
 
 # CODE APPENDIX
 ```{r setup2, include=FALSE}
@@ -1190,4 +1355,12 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r freqComp}
 ```
 ```{r sevComp}
+```
+```{r badSev}
+```
+```{r evalProcessClean}
+```
+```{r evalPredictFreq}
+```
+```{r evalPredictSev}
 ```
