@@ -1267,7 +1267,11 @@ evalDumSevPP <- preProcess(evalDumSevMatrix, method = c('nzv', 'knnImpute'),
 evalDumSevPPI <- predict(evalDumSevPP, newdata = evalDumSevMatrix)
 evalSevFit <- predict(m1SevFit, evalDumSevPPI)
 
-# Summary Statistics
+# Kernel-smoothed density
+ggplot(data.frame(x = evalSevFit), aes(x = x)) + geom_density() +
+  scale_x_continuous(labels = dollar)
+
+# Summary statistics comparison
 tabularComp <- data.table(Set = c("Training", "Testing", "PredictedEval"),
                           Min = c(min(trnYS), min(tstYS), min(evalSevFit)),
                           Median = c(median(trnYS), median(tstYS),
@@ -1276,10 +1280,6 @@ tabularComp <- data.table(Set = c("Training", "Testing", "PredictedEval"),
                           Mean = c(mean(trnYS), mean(tstYS), mean(evalSevFit)),
                           SD = c(sd(trnYS), sd(tstYS), sd(evalSevFit)))
 tabularComp[, CV := SD / Mean, by = Set]
-
-ggplot(data.frame(x = evalSevFit), aes(x = x)) + geom_density() +
-  scale_x_continuous(labels = dollar)
-
 knitr::kable(tabularComp, digits = 3L,
              caption = "Severity Statistics Comparison")
 ```
