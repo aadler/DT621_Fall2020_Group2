@@ -1,0 +1,101 @@
+---
+title: "Final Project"
+author: "John Kellogg"
+date: "11/17/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidymodels)
+library(data.table)
+library(corrplot)
+library(vip)
+library(psych)
+library(summarytools)
+library(readr)
+library(knitr)
+library(GGally)
+```
+
+## Research question
+
+If we know the number of likes, can we predict the number of views a video will receive?
+
+sub questions:
+For each x increase/decrease in views, dislikes, and comments, how much does the view count move?
+Does turning off comments and ratings affect and by how much
+Is that number affected by country?
+Is this the same across categories?
+
+## Data Exploration
+
+```{r cars}
+CA_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/CAvideos.csv"
+CA_set <- read_csv(file = CA_path)
+US_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/USvideos.csv"
+US_set <- read_csv(file = US_path)
+GB_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/GBvideos.csv"
+GB_set <- read_csv(file = GB_path)
+FR_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/FRvideos.csv"
+FR_set <- read_csv(file = FR_path)
+```
+
+Canada data
+
+```{r summary_ca}
+summaryca <- CA_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summaryca)
+
+ggpairs(
+  summaryca,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+
+ca_corr <- cor(summaryca)
+corrplot(ca_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+
+```
+
+```{r summary_us}
+summaryus <- US_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summaryus)
+
+ggpairs(
+  summaryus,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+us_corr <- cor(summaryus)
+corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+
+```
+
+```{r summary_us}
+summarygb <- GB_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summarygb)
+
+ggpairs(
+  summarygb,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+
+gb_corr <- cor(summarygb)
+corrplot(gb_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+```
+
+```{r summary_fr}
+summaryfr <- FR_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summaryfr)
+
+ggpairs(
+  summaryfr,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+
+fr_corr <- cor(summaryfr)
+corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+```
+
+There is definite heteroskedasticity across all data points, we will need to address.  
