@@ -125,7 +125,7 @@ predictorDT <- DT[, .SD, .SDcols = nmtrn]
 # Melt them from wide to long format
 predictorDTM <- melt(predictorDT, variable.name = 'metric',
                      value.name = 'value',  variable.factor = FALSE,
-                     id.vars = NULL)
+                     measure.vars = nmtrn)
 
 # Calculate summary statistics
 statsN <- predictorDTM[, .(Mean = mean(value, na.rm = TRUE),
@@ -253,6 +253,7 @@ preprocessing will also check for near-zero value predictors.
 
 ```{r model1impute}
 # Create bagged-tree imputation model
+set.seed(89)
 m1trnXi <- preProcess(m1trnX, method =c('nzv', 'bagImpute'))
 
 # Replace missing STARS with 0s
@@ -272,7 +273,7 @@ m1predictorDT <- m1trnXimp[, .SD, .SDcols = nmtrn]
 # Melt them from wide to long format
 m1predictorDTM <- melt(m1predictorDT, variable.name = 'metric',
                      value.name = 'value',  variable.factor = FALSE,
-                     id.vars = NULL)
+                     measure.vars = nmtrn)
 
 # Using epanechnikov kernel to generate kernel-smoothed densities
 ggplot(predictorDTM[metric %chin% nmtrnDUB], aes(x = value)) +
@@ -303,63 +304,151 @@ parameter error (finite sample size). On the other, it could indicate the need
 for a zero-inflated version of the counting distributions.
 
 # BUILD MODELS
-## Modeler # 1
-Each of the models will follow a similar format, with only the family changing.
-Each model will start with the saturated model including all the predictors,
-***except*** for `STARS` which will be replaced with the interaction between
-`Rated` and `STARS`. A forward and backwards stepwise procedure based on AIC
-will be used, and the model with the lowest AIC on the training set will be the
-selected to be tested against the testing set. Using stepAIC precludes the use
-of k-fold cross validation.
+## Model Set # 1
+The same person is building one of each requested model. Each of the models will
+follow a similar format, with only the family changing. Each model will start
+with the saturated model including all the individual predictors ***except***
+for `STARS`. There will also be the following interactions:
+
+  * `Rated` and `STARS`
+    * As discussed above, by having `Rating` on its own and this interaction
+    the effect of both having a rating and the effect of the rating level can be
+    measured, without penalizing unrated wines a second time for a 0.
+  * The full four-way interaction between `AcidIndex`, `FixedAcidity`,
+  `VolatileAcidity`, and `pH`
+    * There are **four** separate predictors relating to acidity. Despite their
+    Pearson product-moment correlations being low, I am suspicious of too much
+    weight being given to acidity. By including their interactions, effects can
+    be tempered, or magnified, as necessary. `CitricAcid` is not included here
+    as is not merely an acid but a flavor provider as well. Also, five-way
+    interactions lead to migraines.
+  * `FreeSulfurDioxide` and `TotalSulfurDioxide`
+    * Again, a case of multiple theoretically related predictors
+
+A forward and backwards stepwise procedure based on AIC will be used, and the
+model with the lowest AIC on the training set will be the selected to be tested
+against the testing set. Using stepAIC precludes the use of k-fold cross
+validation.
 
 ```{r m1TrainControl}
 # All Modeler 1 models will use stepAIC so turn off cross-validation
 trc <- trainControl(method = 'none')
 ```
 
-### Poisson Model
+### Poisson Model # 1
 
-```{r m1Poisson}
+```{r m1PTrain}
 set.seed(350047)
-m1PFit <- train(TARGET ~ . - INDEX - STARS + Rated:STARS, data = m1trnXimp,
+m1PFit <- train(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
+                  AcidIndex * FixedAcidity * VolatileAcidity * pH +
+                  Rated:STARS - INDEX - STARS, data = m1trnXimp,
                 trControl = trc, method = 'glmStepAIC',
                 family = poisson(link = 'log'), direction = 'both', trace = 0)
-# Print results
-kable(summary(m1PFit$finalModel)$coefficients, digits = 3L,
+# Save AIC
+m1PFitAIC <- AIC(m1PFit$finalModel)
+```
+\small
+```{r m1PTable}
+# Print results. This needed to ne in its own section so that the LaTeX commands
+# to change the text size can be wrapped around it.
+kable(summary(m1PFit$finalModel)$coefficients,
       caption = "Model 1 Poisson Regression Output")
 ```
+\normalsize
+
+#### Coefficient Discussion
+The absolute magnitude of the coefficients makes sense. Factors related to
+acidity tend to lower the number of cases bought. The factors with the greatest
+magnitude effect are all positive, and they are being rated, the rating level,
+and the label appeal. Keeping everything else equal, merely being rated
+increases the number of cases by about \(e^{0.6509117} \approx  1.9\)!
 
 
+All the coefficients are significant at at least the 5% level except for
+Sulphates, but in terms of AIC, leaving it in provided a better model than
+taking it out
 
+#### Variable Importance
+The further down the list below a variable preceded by a `-` is, the more
+important it is, as its removal would cause a greater disruption to the
+deviance and the AIC. The three rating variables, being rated, the rating level,
+and the label appeal, are the most important variables when it comes to future
+case purchases.
+
+It is also interesting to note that the model including `VolatileAcidity` as 
+a singleton predictor has a lower deviance than the selected model, but that the
+drop in deviance is not enough to offset the possible parameter error. However,
+it makes itself felt through its interaction with `AcidIndex` in the selected
+model.
 ```
-                     Df Deviance   AIC
-<none>                    9654.5 31998
-- Sulphates           1   9657.1 31998
-+ Density             1   9654.1 31999
-+ ResidualSugar       1   9654.2 31999
-- Alcohol             1   9658.3 32000
-+ CitricAcid          1   9654.4 32000
-+ FixedAcidity        1   9654.4 32000
-- pH                  1   9659.0 32000
-- Chlorides           1   9659.5 32001
-- FreeSulfurDioxide   1   9659.7 32001
-- TotalSulfurDioxide  1   9670.3 32012
-- VolatileAcidity     1   9670.9 32012
-- AcidIndex           1   9880.9 32222
-- LabelAppeal         1  10102.7 32444
-- `STARS:RatedRated`  1  10335.1 32676
-- RatedRated          1  10337.5 32679
+                                              Df Deviance   AIC
+<none>                                             9644.0 31993
++ VolatileAcidity                              1   9642.4 31994
+- Sulphates                                    1   9646.5 31994
+- `FreeSulfurDioxide:TotalSulfurDioxide`       1   9647.1 31994
++ pH                                           1   9643.5 31995
++ Density                                      1   9643.6 31995
++ ResidualSugar                                1   9643.6 31995
++ `VolatileAcidity:pH`                         1   9643.7 31995
++ CitricAcid                                   1   9643.9 31995
+- Alcohol                                      1   9647.9 31995
++ `FixedAcidity:VolatileAcidity`               1   9643.9 31995
++ `FixedAcidity:pH:AcidIndex`                  1   9644.0 31995
++ `FixedAcidity:VolatileAcidity:pH`            1   9644.0 31995
++ `VolatileAcidity:pH:AcidIndex`               1   9644.0 31995
++ `FixedAcidity:VolatileAcidity:AcidIndex`     1   9644.0 31995
++ `FixedAcidity:pH`                            1   9644.0 31995
++ `FixedAcidity:VolatileAcidity:pH:AcidIndex`  1   9644.0 31995
+- FixedAcidity                                 1   9648.1 31995
+- `FixedAcidity:AcidIndex`                     1   9648.4 31996
+- Chlorides                                    1   9648.9 31996
+- `pH:AcidIndex`                               1   9648.9 31996
+- FreeSulfurDioxide                            1   9652.3 32000
+- `VolatileAcidity:AcidIndex`                  1   9661.9 32009
+- TotalSulfurDioxide                           1   9662.0 32009
+- AcidIndex                                    1   9678.8 32026
+- LabelAppeal                                  1  10092.2 32439
+- `STARS:RatedRated`                           1  10322.8 32670
+- RatedRated                                   1  10325.1 32672
 ```
 
+### Negative Binomial Model # 1
 
+### Multiple Linear Regrssion Model # 1
 
+## Poisson Model #2
+
+## Negative Binomial Model #2
+
+## Multiple Linear Regrssion #2
 
 # SELECT MODELS
 ## Model Selection Criteria
-We will look at RMSE and AIC as our metrics and select the model which performs
-best on both, Ties will be broken by \(R^2\).
+We will look at RMSE and MAE as our metrics and select the model which performs
+best on both. If no model peforms best on both, the AIC of the model results on
+the training set will be used to break the tie.
 
-# References
+## Model Test Results
+
+### Poisson Model 1
+
+### Poisson Model 2
+
+### Negative Binomial Model 1
+
+### Negative Binomial Model 2
+
+### Multiple Linear Regression Model 1
+
+### Multiple Linear Regression Model 2
+
+## Comparsion
+
+## Selection
+
+# PREDICTION
+
+# REFERENCES
 
   * Kuhn, M. (2019, March 27). *The `caret` Package*.
   https://topepo.github.io/caret/pre-processing.html#imputation
@@ -392,3 +481,8 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1TrainControl}
 ```
+```{r m1PTrain}
+```
+```{r m1PTable}
+```
+
