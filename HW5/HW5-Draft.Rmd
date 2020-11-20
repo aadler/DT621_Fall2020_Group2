@@ -38,11 +38,10 @@ DT <- fread(paste0(urlRemote, pathGithub, fileTrain))
 # Number of training observations
 ntrnobs <- dim(DT)[[1]]
 
-# Get the names of the variables and which ones are numeric
-nmtrn <- names(DT)
-
-# Drop INDEX and target variables from name list
-nmtrn <- nmtrn[-(1:2)]
+# Get the names of the predictor variables
+nmtrn <- names(DT)[-(1:2)]
+nmtrnINT <- c('AcidIndex', 'LabelAppeal', 'STARS')
+nmtrnDUB <- setdiff(nmtrn, nmtrnINT)
 ```
 
 # ASSIGNMENT
@@ -86,17 +85,17 @@ The data is composed of the following variables:
 |VolatileAcidity|Volatile Acid content of wine||
 |pH|pH of wine||
 
-There are `r ntrnobs` observations. All of these predictors are numeric,
-although some `LabelAppeal` and `STARS` could be considered ordered factors. For
-the purposes of this assignment, it makes sense to treat every predictor as
-numeric.
+There are `r ntrnobs` observations. All of these predictors are numeric, 
+although `LabelAppeal`, `AcidIndex` and `STARS` all appear to be ordinal factors
+and not true numerics. For the purpose of this assignment, we can treat them
+as integers.
 
 ## Missing Data
 There are a lot of missing values for some of the predictors.
 
-```{r missing}
+```{r missingVal}
 missingPreds <- transpose(DT[, lapply(.SD, function(x) {sum(is.na(x))}),
-                             .SDcols = -c('INDEX', 'TARGET')],
+                             .SDcols = nmtrn],
                           keep.names = 'Predictors')
 setnames(missingPreds, 'V1', 'Missing')
 missingPreds[, Percentage := Missing / ntrnobs * 100]
@@ -112,3 +111,161 @@ analysis will be decided individually by the modelers in this assignment. The
 other missing variables are all less than 10%, and their handling via imputation
 or otherwise will be done on a model-by-model basis as well.
 
+## Summary Statistics and Graphs
+As all of the data are numeric, we can investigate the distributions of the
+predictors both tabularly and graphically.
+
+The numeric predictor variables have the following summary statistics, ignoring
+missing values:
+
+```{r statsN}
+# Isolate numeric only predictors
+predictorDT <- DT[, .SD, .SDcols = nmtrn]
+
+# Melt them from wide to long format
+predictorDTM <- melt(predictorDT, variable.name = 'metric',
+                     value.name = 'value',  variable.factor = FALSE,
+                     id.vars = NULL)
+
+# Calculate summary statistics
+statsN <- predictorDTM[, .(Mean = mean(value, na.rm = TRUE),
+                           SD = sd(value, na.rm = TRUE),
+                           Min = min(value, na.rm = TRUE),
+                           Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
+                           Median = median(value, na.rm = TRUE),
+                           Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
+                           Max = max(value, na.rm = TRUE),
+                           IQR = IQR(value, na.rm = TRUE)), keyby = 'metric']
+
+# Print the table
+kable(statsN, digits = 3L, align = 'r',
+      caption = "Summary Statistitics for Numeric Variables")
+```
+
+A kernel-smoothed density plot of the distributions of the non-integer numeric
+predictors is below, followed by a histogram of the integral-valued predictors.
+
+```{r graphsD, fig.height=5, fig.width=7}
+# Using epanechnikov kernel
+ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnDUB], aes(x = value)) +
+  geom_density(kernel = 'epanechnikov') +
+  facet_wrap( ~ metric, scales = 'free') +
+  ggtitle('Kernel-smoothed Density of Numeric Predictors')
+```
+
+The numeric predictors all look to be basically symmetrical, but non-Gaussian in
+that there is a strong spike near the median, but the tails on either side are
+thicker than would be for a normal distribution with that low of a standard
+deviation.
+
+```{r graphsH, fig.height=2, fig.width=7}
+# Freedman-Diaconis rule for bin widths
+FDbin <- function(x) {
+  result <- 2 * IQR(x, na.rm = TRUE) / (length(x) ^ (1 / 3))
+  return(ifelse(result == 0, 0.5, result))
+}
+ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnINT], aes(x = value)) +
+  geom_histogram(binwidth = FDbin, fill = 'indianred4') +
+  facet_wrap( ~ metric, scales = 'free') +
+  ggtitle('Histogram of Integral Predictors')
+```
+
+Of these three, `LabelAppeal` seems to be the most "normal" of the lot; `STARS`
+and `AcidIndex` look to be more Poisson in shape.
+
+### Correlations
+The corrgram below graphically represents the correlations between the numeric
+predictor variables, when ignoring the missing variables.
+
+```{r corrgram, fig.width=6, fig.height=4}
+corrplot::corrplot(cor(DT[, ..nmtrn], use = 'complete.obs'),
+         method = 'ellipse', type = 'lower', order = 'hclust',
+         hclust.method = 'ward.D2')
+```
+
+There is very little correlation between the variables. The only pairs with some
+level correlation are:
+
+  * `STARS` being positively correlated with `LabelAppeal`
+    * This is interesting. Could it be that wine connoisseurs are impacted by
+    the visual appearance of the label and not just the flavor?
+  * `AcidIndex` having some positive correlation with `FixedAcidity`
+    * One may have suspected a higher correlation, to be frank.
+  * `AcidIndex` having some *negative* correlation with `STARS`
+    * Wine reviewers may not like too much acidity, it seems.
+    
+
+
+
+# CODE APPENDIX
+```{r setup2, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+```{r loadData}
+```
+```{r missingVal}
+```
+```{r statsN}
+```
+```{r graphsD}
+```
+```{r graphsH}
+```
+```{r corrgram}
+```
+```{r dataClean}
+```
+```{r trainTestSplit}
+```
+```{r model1addVars}
+```
+```{r m2clean}
+```
+```{r m3clean}
+```
+```{r model1DummyFreq}
+```
+```{r model1RunFreq}
+```
+```{r model1DummySev}
+```
+```{r model1RunSev}
+```
+```{r model2RunFreq}
+```
+```{r model2RunSev}
+```
+```{r model3RunBaseLog}
+```
+```{r model3RunFreq}
+```
+```{r model3RunBaseLin}
+```
+```{r model3RunSev}
+```
+```{r setUpCompTables}
+```
+```{r validateM1F}
+```
+```{r validateM1S}
+```
+```{r validateM2F}
+```
+```{r validateM2S}
+```
+```{r validateM3F}
+```
+```{r validateM3S}
+```
+```{r freqComp}
+```
+```{r sevComp}
+```
+```{r badSev}
+```
+```{r evalProcessClean}
+```
+```{r evalPredictFreq}
+```
+```{r evalPredictSev}
+```
