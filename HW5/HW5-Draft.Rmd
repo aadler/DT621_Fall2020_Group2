@@ -16,15 +16,10 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 
 ```{r loadData, include=FALSE}
 # Load necessary libraries
-library(arm)
-library(dplyr)
 library(ggplot2)
 library(scales)
 library(knitr)
 library(caret)
-library(RANN)
-library(pROC)
-library(mice)
 library(corrplot)
 library(data.table)
 
@@ -41,7 +36,7 @@ fileTest = "wine-evaluation-data.csv"
 DT <- fread(paste0(urlRemote, pathGithub, fileTrain))
 
 # Number of training observations
-ntrobs <- dim(DT)[[1]]
+ntrnobs <- dim(DT)[[1]]
 
 # Get the names of the variables and which ones are numeric
 nmtrn <- names(DT)
@@ -91,13 +86,29 @@ The data is composed of the following variables:
 |VolatileAcidity|Volatile Acid content of wine||
 |pH|pH of wine||
 
-There are `r ntrobs` observations. All of these predictors are numeric, although
-some `LabelAppeal` and `STARS` could be considered ordered factors. There are a
-lot of missing values for some of the predictors.
+There are `r ntrnobs` observations. All of these predictors are numeric,
+although some `LabelAppeal` and `STARS` could be considered ordered factors. For
+the purposes of this assignment, it makes sense to treat every predictor as
+numeric.
+
+## Missing Data
+There are a lot of missing values for some of the predictors.
 
 ```{r missing}
-Missing <- t(DT[, lapply(.SD, function(x) {sum(is.na(x))}),
-                .SDcols = -c('INDEX', 'TARGET')])
-kable(Missing, col.names = 'Missing',
-      caption = 'Predictors with Missing Observations')
+missingPreds <- transpose(DT[, lapply(.SD, function(x) {sum(is.na(x))}),
+                             .SDcols = -c('INDEX', 'TARGET')],
+                          keep.names = 'Predictors')
+setnames(missingPreds, 'V1', 'Missing')
+missingPreds[, Percentage := Missing / ntrnobs * 100]
+setorder(missingPreds, -Missing)
+kable(missingPreds, digits = 2L, caption = 'Predictors with Missing Observations')
 ```
+
+`STARS` is especially sparse, but as noted in the assignment, this may be an
+indication in and of its own. It is reasonable to assume that the vinters of a
+good wine want it to be rated. If they do not submit it for rating, that may be
+an indication of their lack of faith in the wine. How to factor this into the
+analysis will be decided individually by the modelers in this assignment. The
+other missing variables are all less than 10%, and their handling via imputation
+or otherwise will be done on a model-by-model basis as well.
+
