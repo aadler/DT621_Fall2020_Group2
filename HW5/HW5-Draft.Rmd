@@ -146,7 +146,7 @@ A kernel-smoothed density plot of the distributions of the non-integer numeric
 predictors is below, followed by a histogram of the integral-valued predictors.
 
 ```{r graphsD, fig.height=5, fig.width=7}
-# Using epanechnikov kernel
+# Using epanechnikov kernel to generate kernel-smoothed densities
 ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnDUB], aes(x = value)) +
   geom_density(kernel = 'epanechnikov') +
   facet_wrap( ~ metric, scales = 'free') +
@@ -166,6 +166,7 @@ FDbin <- function(x) {
   result <- 2 * IQR(x, na.rm = TRUE) / (length(x) ^ (1 / 3))
   return(ifelse(result == 0, 0.5, result))
 }
+# Generate histogram
 ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnINT], aes(x = value)) +
   geom_histogram(binwidth = FDbin, fill = 'indianred4') +
   facet_wrap( ~ metric, scales = 'free') +
@@ -175,11 +176,12 @@ ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnINT], aes(x = value)) +
 Of these three, `LabelAppeal` seems to be the most "normal" of the lot; `STARS`
 and `AcidIndex` look to be more Poisson in shape.
 
-### Correlations
+## Correlations
 The corrgram below graphically represents the correlations between the numeric
 predictor variables, when ignoring the missing variables.
 
-```{r corrgram, fig.width=6, fig.height=4}
+```{r corrgram, fig.width=5, fig.height=6.5}
+# Create corrgram
 corrplot::corrplot(cor(DT[, ..nmtrn], use = 'complete.obs'),
          method = 'ellipse', type = 'lower', order = 'hclust',
          hclust.method = 'ward.D2')
@@ -214,14 +216,153 @@ trnX <- DT[trnIDX$Resample1, ]
 tstX <- DT[!trnIDX$Resample1, ]
 ```
 
-# Modeler # 1
-## Missing Data
-The missing daya
+## Modeler # 1
+### Missing Data
+The missing data can be split into two groups: `STARS` and the rest. For all the
+others, I do not think there is signal encoded in the "missingness" and thus
+will use some form of imputation. `STARS` is different as discussed in the DATA
+EXPLORATION section. Therefore, I will create a new feature called `Rated` which
+will be true if `STARS` is missing, and then only use this variable and its
+interaction with `STARS` in the model, and not `STARS` by itself. 
+
+```{r model1addVars}
+# Copy the training set to leave a pristine version for others
+m1trnX <- copy(trnX)
+
+# Add the "rated" factor variable
+m1trnX[, Rated := factor(ifelse(is.na(STARS), 'Unrated', 'Rated'),
+                         levels = c('Unrated', 'Rated'),
+                         labels = c('Unrated', 'Rated'))]
+```
+
+### Imputation
+Imputation will be handled through bagging. Instead of looking at a nearest
+neighbors approach, which also requires centering and scaling, once can create a
+set of bagged trees. As per Kuhn (2019):
+
+>*For each predictor in the data, a bagged tree is created using all of the*
+*other predictors in the training set. When a new sample has a missing*
+*predictor value, the bagged model is used to predict the value. While, in*
+*theory, this is a more powerful method of imputing, the computational costs*
+*are much higher than the nearest neighbor technique.*
+
+The bagged trees will use `STARS` as a predictor, as that contains valuable
+information, but prior to the imputation, the missing `STARS` values will be
+replaced by 0 so as not to be imputed, as per the explanation above. The
+preprocessing will also check for near-zero value predictors.
+
+```{r model1impute}
+# Create bagged-tree imputation model
+m1trnXi <- preProcess(m1trnX, method =c('nzv', 'bagImpute'))
+
+# Replace missing STARS with 0s
+m1trnX[is.na(STARS), STARS := 0L]
+
+# Impute the remaining NAs
+m1trnXimp <- predict(m1trnXi, newdata = m1trnX)
+```
+
+It will be instructive to compare the shapes of the distributions after
+imputation to those before imputation.
+
+```{r m1postImputeD, fig.height=5, fig.width=7}
+# Isolate numeric only predictors
+m1predictorDT <- m1trnXimp[, .SD, .SDcols = nmtrn]
+
+# Melt them from wide to long format
+m1predictorDTM <- melt(m1predictorDT, variable.name = 'metric',
+                     value.name = 'value',  variable.factor = FALSE,
+                     id.vars = NULL)
+
+# Using epanechnikov kernel to generate kernel-smoothed densities
+ggplot(predictorDTM[metric %chin% nmtrnDUB], aes(x = value)) +
+  geom_density(kernel = 'epanechnikov') +
+  facet_wrap( ~ metric, scales = 'free') +
+  ggtitle('Kernel-smoothed Density of Numeric Predictors')
+```
+
+Thankfully, none of the shapes appears to have changed significantly, which
+implies the imputation was in line with the original distributions. Now for the
+histograms.
+
+```{r m1postImputeH, fig.height=2, fig.width=7}
+# Generate histogram
+ggplot(m1predictorDTM[metric %chin% nmtrnINT], aes(x = value)) +
+  geom_histogram(binwidth = FDbin, fill = 'indianred4') +
+  facet_wrap( ~ metric, scales = 'free') +
+  ggtitle('Histogram of Integral Predictors')
+```
+
+Here too, `AcidIndex` and `LabelAppeal` look very similar to their
+pre-imputation distribution. What stands out is `STARS`. Both the Poisson and
+the negative binomial models are either unimodal or have to consecutive values
+sharing the mode, due to their inherent nature as discrete disctibutions. What
+is seen here is that 1 star is empirically less common than 0 (unrated) or 2
+stars. On the one hand, this could simply be noise (process variance) or
+parameter error (finite sample size). On the other, it could indicate the need
+for a zero-inflated version of the counting distributions.
+
+# BUILD MODELS
+## Modeler # 1
+Each of the models will follow a similar format, with only the family changing.
+Each model will start with the saturated model including all the predictors,
+***except*** for `STARS` which will be replaced with the interaction between
+`Rated` and `STARS`. A forward and backwards stepwise procedure based on AIC
+will be used, and the model with the lowest AIC on the training set will be the
+selected to be tested against the testing set. Using stepAIC precludes the use
+of k-fold cross validation.
+
+```{r m1TrainControl}
+# All Modeler 1 models will use stepAIC so turn off cross-validation
+trc <- trainControl(method = 'none')
+```
+
+### Poisson Model
+
+```{r m1Poisson}
+set.seed(350047)
+m1PFit <- train(TARGET ~ . - INDEX - STARS + Rated:STARS, data = m1trnXimp,
+                trControl = trc, method = 'glmStepAIC',
+                family = poisson(link = 'log'), direction = 'both', trace = 0)
+# Print results
+kable(summary(m1PFit$finalModel)$coefficients, digits = 3L,
+      caption = "Model 1 Poisson Regression Output")
+```
+
+
+
+```
+                     Df Deviance   AIC
+<none>                    9654.5 31998
+- Sulphates           1   9657.1 31998
++ Density             1   9654.1 31999
++ ResidualSugar       1   9654.2 31999
+- Alcohol             1   9658.3 32000
++ CitricAcid          1   9654.4 32000
++ FixedAcidity        1   9654.4 32000
+- pH                  1   9659.0 32000
+- Chlorides           1   9659.5 32001
+- FreeSulfurDioxide   1   9659.7 32001
+- TotalSulfurDioxide  1   9670.3 32012
+- VolatileAcidity     1   9670.9 32012
+- AcidIndex           1   9880.9 32222
+- LabelAppeal         1  10102.7 32444
+- `STARS:RatedRated`  1  10335.1 32676
+- RatedRated          1  10337.5 32679
+```
+
+
+
 
 # SELECT MODELS
 ## Model Selection Criteria
 We will look at RMSE and AIC as our metrics and select the model which performs
 best on both, Ties will be broken by \(R^2\).
+
+# References
+
+  * Kuhn, M. (2019, March 27). *The `caret` Package*.
+  https://topepo.github.io/caret/pre-processing.html#imputation
 
 # CODE APPENDIX
 ```{r setup2, include=FALSE}
@@ -243,53 +384,11 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r model1addVars}
 ```
-```{r m2clean}
+```{r model1impute}
 ```
-```{r m3clean}
+```{r m1postImputeD}
 ```
-```{r model1DummyFreq}
+```{r m1postImputeH}
 ```
-```{r model1RunFreq}
-```
-```{r model1DummySev}
-```
-```{r model1RunSev}
-```
-```{r model2RunFreq}
-```
-```{r model2RunSev}
-```
-```{r model3RunBaseLog}
-```
-```{r model3RunFreq}
-```
-```{r model3RunBaseLin}
-```
-```{r model3RunSev}
-```
-```{r setUpCompTables}
-```
-```{r validateM1F}
-```
-```{r validateM1S}
-```
-```{r validateM2F}
-```
-```{r validateM2S}
-```
-```{r validateM3F}
-```
-```{r validateM3S}
-```
-```{r freqComp}
-```
-```{r sevComp}
-```
-```{r badSev}
-```
-```{r evalProcessClean}
-```
-```{r evalPredictFreq}
-```
-```{r evalPredictSev}
+```{r m1TrainControl}
 ```
