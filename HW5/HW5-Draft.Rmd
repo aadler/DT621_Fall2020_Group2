@@ -341,19 +341,15 @@ Each will start with the saturated model including all the individual predictors
     removed from contention, only the interactions between the two others will
     be considered.
 
-A forward and backwards stepwise procedure based on AIC will be used, and the
-model with the lowest AIC on the training set will be the selected to be tested
-against the testing set. Using stepAIC precludes the use of k-fold cross
-validation.
-
-```{r m1TrainControl}
-# All Modeler 1 models will use stepAIC so turn off cross-validation
-trc <- trainControl(method = 'none')
-```
-
 ### Poisson Model # 1
+For the Poisson model, a forward and backwards stepwise procedure based on AIC
+will be used, and the model with the lowest AIC on the training set will be the
+selected to be tested against the testing set. Using stepAIC precludes the use
+of k-fold cross validation.
 
 ```{r m1PTrain}
+# Using stepAIC so turn off cross-validation
+trc <- trainControl(method = 'none')
 set.seed(350047)
 m1PFit <- train(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
                   AcidIndex * FixedAcidity * VolatileAcidity * pH +
@@ -457,14 +453,38 @@ parameter error. These include `VolatileAcidity`, `LabelAppeal`, `pH`,
 ```
 
 ### Negative Binomial Model # 1
+```{r m1NBTrain, cache=TRUE}
+glmc <- glm.control(maxit = 25, epsilon = 1e-12)
+set.seed(72)
+m1NBFit2a <- glm.nb(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
+                      AcidIndex * FixedAcidity * VolatileAcidity * pH +
+                      Rated:STARS + LabelAppeal:Rated +
+                      LabelAppeal:Rated:STARS - INDEX - STARS,
+                    data = m1trnXimp, control = glmc, link = log,
+                    na.action = na.exclude)
 
-### Multiple Linear Regrssion Model # 1
+m1NBFit2b <- stepAIC(m1NBFit2a, direction = 'both', trace = 1)
+
+# Save AIC
+m1NBFitAIC <- AIC(m1NBFit2b)
+```
+
+\small
+```{r m1NBTable}
+# Print results. This needed to ne in its own section so that the LaTeX commands
+# to change the text size can be wrapped around it.
+kable(summary(m1NBFit2b)$coefficients,
+      caption = "Model 1 Negative Binomial Regression Output")
+```
+\normalsize
 
 ## Poisson Model #2
 
 ## Negative Binomial Model #2
 
-## Multiple Linear Regrssion #2
+## Multiple Linear Regrssion Model # 1
+
+## Multiple Linear Regrssion Model # 2
 
 # SELECT MODELS
 ## Model Selection Criteria
@@ -524,8 +544,6 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r m1postImputeD}
 ```
 ```{r m1postImputeH}
-```
-```{r m1TrainControl}
 ```
 ```{r m1PTrain}
 ```
