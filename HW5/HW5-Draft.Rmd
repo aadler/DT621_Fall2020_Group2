@@ -156,7 +156,9 @@ ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnDUB], aes(x = value)) +
 The numeric predictors all look to be basically symmetrical, but non-Gaussian in
 that there is a strong spike near the median, but the tails on either side are
 thicker than would be for a normal distribution with that low of a standard
-deviation.
+deviation. This is also why a boxplot would be a poor graphical indicator, as
+the spike at the medians would lead to a compressed inter-quartile range and a
+plethora of outliers.
 
 ```{r graphsH, fig.height=2, fig.width=7}
 # Freedman-Diaconis rule for bin widths
@@ -195,10 +197,26 @@ level correlation are:
     * Wine reviewers may not like too much acidity, it seems.
     
 # DATA PREPARATION
-The different methods of imputation and feature generation will be discussed in
-each models BUILD section. The only preparation performed here will be that
-which will apply to all models equally.
+First, preparation necessary for all the models equally will be performed. The
+subsequent imputation and feature generation, if necessary will be discussed in
+a separate subsection for each modeler.
 
+## Training & Testing Split
+All the models will be trained on the same approximately 70% of the training
+set, reserving 30% for validation of which model to select for the count
+estimation on the supplied evaluation set.
+
+```{r trainTestSplit}
+# Create training and testing split
+set.seed(1004)
+trnIDX <- createDataPartition(DT$TARGET, p = 0.7)
+trnX <- DT[trnIDX$Resample1, ]
+tstX <- DT[!trnIDX$Resample1, ]
+```
+
+# Modeler # 1
+## Missing Data
+The missing daya
 
 # SELECT MODELS
 ## Model Selection Criteria
@@ -220,8 +238,6 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r graphsH}
 ```
 ```{r corrgram}
-```
-```{r dataClean}
 ```
 ```{r trainTestSplit}
 ```
