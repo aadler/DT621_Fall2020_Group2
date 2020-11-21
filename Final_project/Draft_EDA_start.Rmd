@@ -1,13 +1,19 @@
 ---
-title: "Final Project"
-author: "John Kellogg"
-date: "11/17/2020"
-output: html_document
+title: "DATA 621 - Business Analytics and Data Mining"
+subtitle: 'Fall 2020 - Group 2 - Homework #3'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "10/28/2020"
+output:
+  pdf_document: default
+urlcolor: purple
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
 
+```{r libraries}
 library(tidyverse)
 library(tidymodels)
 library(data.table)
@@ -20,19 +26,7 @@ library(knitr)
 library(GGally)
 ```
 
-## Research question
-
-If we know the number of likes, can we predict the number of views a video will receive?
-
-sub questions:
-For each x increase/decrease in views, dislikes, and comments, how much does the view count move?
-Does turning off comments and ratings affect and by how much
-Is that number affected by country?
-Is this the same across categories?
-
-## Data Exploration
-
-```{r cars}
+```{r load_data}
 CA_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/CAvideos.csv"
 CA_set <- read_csv(file = CA_path)
 US_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/USvideos.csv"
@@ -41,8 +35,93 @@ GB_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master
 GB_set <- read_csv(file = GB_path)
 FR_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/FRvideos.csv"
 FR_set <- read_csv(file = FR_path)
+DE_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/DEvideos.csv"
+DE_set <- read_csv(file = DE_path)
 ```
 
+# Abstract 
+`Short summary of the research problem and its importance, what you do and what you find
+
+# Introduction
+  
+YouTube has changed the future of video entertainment forever 
+and the platform is now a multi-billion dollar industry in itself.  
+In 2013, less than 8 years after its launch, the platform was seeing 
+one billion active users a month. Additionally, in 2019 the 
+platform generated $15 billion in advertising revenue.  YouTube’s 
+model connected a user’s creativity with a desire for global 
+recognition.  Before YouTube, international fame was not conceivable 
+outside of a standard television or movie studio.  Today, creators 
+from all over the world are gaining international prominence using 
+their own equipment and space.   “YouTube is central to today’s video 
+ecosystem,” says Enders Analysis research analyst Jamie McGowan Stuart. 
+  
+The top 10 YouTube channels for half this year alone amassed over 162 
+million.  The current top channel “Vlad and Nikita” earn around 312 
+thousand per video .   Each video invariably contains at least one 
+advertisement as well as most of the videographers have a separate 
+sponsor who pays them directly.  According to a survey from Google, 
+6 out of 10 people already prefer online video platforms or streaming 
+services over live TV .  Additionally Dr. James McQuivey states, by 2025 
+(4 years from the authorship of this paper), he expects half of viewers 
+under the age of 32 will not have paid for TV service.  Understanding 
+some of the underpinnings of what gets the most views is beneficial to 
+anyone entering or already in the YouTube world.  
+  
+## Research Question
+  
+Using data from kaggle (https://www.kaggle.com/datasnaek/youtube-new), 
+we will identify if there is direct or indirect link between a video’s 
+number of views and an increase or decrease in the number of likes, 
+dislikes, and comments.  We will also use a video’s country of origin and 
+the category or type of video as predictors.  
+  
+## Methodology
+  
+The data contains the daily trending videos from 2017 with up to 200 listed 
+trending videos per day.  We will be utilizing, at minimum, the json’s and 
+CSV’s for Canada, United States, Great Britain, Germany and France, totaling 
+30581 unique values.  The site has data for Japan, Mexico, Korea, India, and 
+Russia; we will attempt to pull them in, if required, for a larger picture.  
+However, the five already chosen datasets should be sufficient to cover the 
+project statement. 
+  
+The structure of the paper is based on the flow of the research:
+
+* Introduction
+* Data 
+  * The data sets have an expected heteroscedasticity.  To work around this, we structured the data using the XXXXX method.  
+  * After preparing the data, we created randomized subsets of the datasets in a train/test structure for use in the models.
+  * Distribution and Correlation plots are used to further the model selection process
+* Models
+  * We generated X models using methods such as XXXXXX in order to find and chose the most appropriate and accurate model. 
+* Results
+  * We discuss the performance and prediction accuracy of the model
+* Summary and Conclusions
+  * Quick recap of the findings, identify areas of further research and shortcomings found during the research.
+* References
+* Code Appendix
+  * All R code used in the research
+
+# Data
+•Description of Data
+–A complete description of the desired output
+
+## Data Description
+
+## DATA PREPARATION
+
+~discuss using Excel for data cleaning for unique values in France.
+
+```{r}
+# Add Country Code to each set
+# throw out incomplete cases
+# Join all datasets into one large set - may use it may not
+```
+
+
+
+## Data Distribution and Correlation
 Canada data
 
 ```{r summary_ca}
@@ -98,4 +177,50 @@ fr_corr <- cor(summaryfr)
 corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
 ```
 
-There is definite heteroskedasticity across all data points, we will need to address.  
+There is definite heteroskedasticity across all data points, we will need to address.
+
+# Models
+•Data Analysis
+–Describe the instrumentation
+–Describe the analysis plan
+•Describe the scope and limitations of the methodology
+## Model Creation
+
+## Model Selection
+
+### Criteria
+### Performance
+
+### Predictions
+
+# Results
+– Needs to systematically and clearly articulate the study findings. If the results are unclear, the reviewer must decide whether the analysis of the data was poorly executed or whether the Results section is poorly organized.
+
+– Should state wheather the hypothesis were verified or proven untrue or, if no hypotheses were given, weather the research questions were answered.
+The authors should also comment on their results in light of previous studies and explain what differences (if any) exist between the findings and those reported by others and attempt to provide an explaination of the differnces.  
+
+# Summary and Conclusions
+
+•Recap briefly what you do in the paper
+•Evaluate the effectiveness of your research and provide recommendations (if applicable)
+•Make sure that all of the questions raised in the introduction and the literature review have been addressed
+•Compare the final results against the original aims and objectives
+•Identify any shortcomings and future research
+
+# REFERENCES
+
+ * https://www.ibc.org/trends/analysis-the-youtube-revolution/5796.article 
+ * https://www.cashlady.com/youtube-league/
+ * Google/comScore custom survey, U.S., January 2016. (n=2,940 adults aged 18+ who like to watch video content in a typical week; video content defined as TV shows, movies, music videos, videos uploaded by people and/or videos uploaded by brands) https://www.thinkwithgoogle.com/marketing-strategies/video/video-trends-where-audience-watching
+
+ * https://go.forrester.com/blogs/15-10-07-by_2025_50_of_adults_under_age_32_will_not_pay_for_tv/
+
+
+# CODE APPENDIX
+The code chunks below represent the R code called in order during the analysis.
+They are reproduced in the appendix for review and comment.
+
+```{r appendix, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+
