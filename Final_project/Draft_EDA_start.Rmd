@@ -11,6 +11,10 @@ urlcolor: purple
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+
+#header-includes:
+#    - \usepackage{setspace}
+#    - \doublespacing
 ```
 
 ```{r libraries}
@@ -27,16 +31,16 @@ library(GGally)
 ```
 
 ```{r load_data}
-CA_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/CAvideos.csv"
-CA_set <- read_csv(file = CA_path)
-US_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/USvideos.csv"
-US_set <- read_csv(file = US_path)
-GB_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/GBvideos.csv"
-GB_set <- read_csv(file = GB_path)
-FR_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/FRvideos.csv"
-FR_set <- read_csv(file = FR_path)
-DE_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/DEvideos.csv"
-DE_set <- read_csv(file = DE_path)
+ca_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/CAvideos.csv"
+ca_set <- read_csv(file = ca_path)
+us_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/USvideos.csv"
+us_set <- read_csv(file = us_path)
+gb_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/GBvideos.csv"
+gb_set <- read_csv(file = gb_path)
+fr_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/FRvideos.csv"
+fr_set <- read_csv(file = fr_path)
+de_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/DEvideos.csv"
+de_set <- read_csv(file = de_path)
 ```
 
 # Abstract 
@@ -78,9 +82,8 @@ the category or type of video as predictors.
   
 ## Methodology
   
-The data contains the daily trending videos from 2017 with up to 200 listed 
-trending videos per day.  We will be utilizing, at minimum, the json’s and 
-CSV’s for Canada, United States, Great Britain, Germany and France, totaling 
+We will be utilizing, at minimum, the json’s and CSV’s for Canada, 
+United States, Great Britain, Germany and France, totaling 
 30581 unique values.  The site has data for Japan, Mexico, Korea, India, and 
 Russia; we will attempt to pull them in, if required, for a larger picture.  
 However, the five already chosen datasets should be sufficient to cover the 
@@ -109,23 +112,130 @@ The structure of the paper is based on the flow of the research:
 
 ## Data Description
 
+The datasets in total have 186,922 unique values across the 5 countries used. They 
+contain the daily trending videos from 2017 with up to 200 listed trending videos 
+per day.  The first response variable is coded as a 1 when a video's views are above 
+the mean of views in their respective country and a 0 if they are below. The second 
+response varible XXX is coded as a 1 for above the mean of the global population and 
+0 if below.
+
+In all, there are 8 predictors, which include:
+
+Variables|Description   
+-|----
+views | The number of times a video was watched
+category | the type of video, such as "Film & Animation", "Sports", "Music", etc... 
+likes | the number of times a user clicked "like"
+dislikes | the number of times a user clicked "dislike"
+comment_count | the number of comments on an individual video   
+comments_disabled | boolian value if the owner of the video disabled users from commenting   
+ratings_disabled | boolian value if the owner of the video disabled ratings
+country_code | code created to identify country of origin
+view_target | Above (1) or below  (0) the mean views from country of origin
+view_global_target | Above (1) or below  (0) the mean views globally
+ 
+
 ## DATA PREPARATION
 
 ~discuss using Excel for data cleaning for unique values in France.
 
-```{r}
-# Add Country Code to each set
-# throw out incomplete cases
-# Join all datasets into one large set - may use it may not
+```{r ca_data_prep}
+ca_set <- ca_set %>% filter(complete.cases(ca_set))
+
+ca_mean <- mean(ca_set$views)
+
+ca_set <- ca_set%>%
+  mutate(country = 'CA')%>%
+  mutate(country_code = 1)%>%
+  mutate(view_target = ifelse(views > ca_mean,1,0))
 ```
 
+```{r de_data_prep}
+de_set <- de_set %>% filter(complete.cases(de_set))
+
+de_mean <- mean(de_set$views)
+
+de_set <- de_set%>%
+  mutate(country = 'DE')%>%
+  mutate(country_code = 2)%>%
+  filter(complete.cases(de_set))%>%
+  mutate(view_target = ifelse(views > de_mean,1,0))
+```
+
+```{r fr_data_prep}
+fr_set <- fr_set %>% filter(complete.cases(fr_set))
+
+fr_mean <- mean(fr_set$views)
+
+fr_set <- fr_set%>%
+  mutate(country = 'FR')%>%
+  mutate(country_code = 3)%>%
+  filter(complete.cases(fr_set))%>%
+  mutate(view_target = ifelse(views > fr_mean,1,0))
+```
+
+```{r gb_data_prep}
+gb_set <- gb_set %>% filter(complete.cases(gb_set))
+
+gb_mean <- mean(gb_set$views)
+
+gb_set <- gb_set%>%
+  mutate(country = 'GB')%>%
+  mutate(country_code = 4)%>%
+  filter(complete.cases(gb_set))%>%
+  mutate(view_target = ifelse(views > gb_mean,1,0))
+```
+
+```{r us_data_prep}
+us_set <- us_set %>% filter(complete.cases(us_set))
+
+us_mean <- mean(us_set$views)
+
+us_set <- us_set%>%
+  mutate(country = 'US')%>%
+  mutate(country_code = 5)%>%
+  filter(complete.cases(us_set))%>%
+  mutate(view_target = ifelse(views > us_mean,1,0))
+```
+
+```{r merge_datasets}
+mergeCols = c('video_id','trending_date','title','channel_title','category_id','publish_time','tags','views','likes','dislikes','comment_count','thumbnail_link','comments_disabled','ratings_disabled','video_error_or_removed','description','country','country_code', 'view_target')
+
+full_set <- ca_set %>% full_join(de_set, by=mergeCols)
+full_set <- full_set %>% 
+  full_join(fr_set, by=mergeCols)%>%
+  full_join(gb_set, by=mergeCols)%>%
+  full_join(us_set, by=mergeCols)
+
+full_mean <- mean(full_set$views)
+
+full_set <- full_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+```
+
+```{r global_target}
+ca_set <- ca_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+
+de_set <- de_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+
+fr_set <- fr_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+
+gb_set <- gb_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+
+us_set <- us_set %>%
+  mutate(view_global_target = ifelse(views > full_mean,1,0))
+```
 
 
 ## Data Distribution and Correlation
 Canada data
 
 ```{r summary_ca}
-summaryca <- CA_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryca <- ca_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
 describe(summaryca)
 
 ggpairs(
@@ -138,8 +248,22 @@ corrplot(ca_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 
 ```
 
+```{r summary_de}
+summaryde <- de_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summaryus)
+
+ggpairs(
+  summaryde,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+us_corr <- cor(summaryde)
+corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+
+```
+
+
 ```{r summary_us}
-summaryus <- US_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryus <- us_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
 describe(summaryus)
 
 ggpairs(
@@ -152,7 +276,7 @@ corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_us}
-summarygb <- GB_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summarygb <- gb_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
 describe(summarygb)
 
 ggpairs(
@@ -165,7 +289,7 @@ corrplot(gb_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_fr}
-summaryfr <- FR_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryfr <- fr_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
 describe(summaryfr)
 
 ggpairs(
@@ -176,6 +300,26 @@ ggpairs(
 fr_corr <- cor(summaryfr)
 corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
 ```
+
+```{r summary_global}
+summarygl <- full_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+describe(summarygl)
+
+ggpairs(
+  summarygl,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+
+fr_corr <- cor(summarygl)
+corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+```
+
+
+
+```{r}
+
+```
+
 
 There is definite heteroskedasticity across all data points, we will need to address.
 
