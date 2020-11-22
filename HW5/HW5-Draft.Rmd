@@ -17,8 +17,8 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```{r loadData, include=FALSE}
 # Load necessary libraries
 library(ggplot2)
-library(scales)
 library(knitr)
+library(MASS)
 library(caret)
 library(corrplot)
 library(data.table)
@@ -453,30 +453,52 @@ parameter error. These include `VolatileAcidity`, `LabelAppeal`, `pH`,
 ```
 
 ### Negative Binomial Model # 1
-```{r m1NBTrain, cache=TRUE}
-glmc <- glm.control(maxit = 25, epsilon = 1e-12)
-set.seed(72)
-m1NBFit2a <- glm.nb(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
-                      AcidIndex * FixedAcidity * VolatileAcidity * pH +
-                      Rated:STARS + LabelAppeal:Rated +
-                      LabelAppeal:Rated:STARS - INDEX - STARS,
-                    data = m1trnXimp, control = glmc, link = log,
-                    na.action = na.exclude)
+As the dispersion from the Poisson model was less than 1, at first blush, it is
+not expected that the negative binomial model will outperform the Poisson.
 
-m1NBFit2b <- stepAIC(m1NBFit2a, direction = 'both', trace = 1)
+```{r m1NBTrain, cache=TRUE}
+glmc <- glm.control(maxit = 25, epsilon = 1e-14)
+set.seed(72)
+m1NBFitStart <- glm.nb(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
+                         AcidIndex * FixedAcidity * VolatileAcidity * pH +
+                         Rated:STARS + LabelAppeal:Rated +
+                         LabelAppeal:Rated:STARS - INDEX - STARS,
+                       data = m1trnXimp, control = glmc, link = log)
+
+m1NBFit <- stepAIC(m1NBFitStart, direction = 'both', trace = 0)
 
 # Save AIC
-m1NBFitAIC <- AIC(m1NBFit2b)
+m1NBFitAIC <- AIC(m1NBFit)
 ```
 
 \small
 ```{r m1NBTable}
 # Print results. This needed to ne in its own section so that the LaTeX commands
 # to change the text size can be wrapped around it.
-kable(summary(m1NBFit2b)$coefficients,
+kable(summary(m1NBFit)$coefficients,
       caption = "Model 1 Negative Binomial Regression Output")
 ```
 \normalsize
+
+```
+                                       Df   AIC
+<none>                                    31905
+- Sulphates                             1 31906
++ pH:AcidIndex                          1 31906
+- FreeSulfurDioxide:TotalSulfurDioxide  1 31906
+- VolatileAcidity:AcidIndex             1 31906
++ Density                               1 31906
++ ResidualSugar                         1 31906
++ VolatileAcidity:pH                    1 31907
++ CitricAcid                            1 31907
++ FixedAcidity:pH                       1 31907
++ FixedAcidity:VolatileAcidity          1 31907
+- FixedAcidity:AcidIndex                1 31907
+- pH                                    1 31907
+- Alcohol                               1 31907
+- Chlorides                             1 31907
+- LabelAppeal:Rated:STARS               1 31917
+```
 
 ## Poisson Model #2
 
