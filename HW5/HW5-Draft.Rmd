@@ -6,8 +6,8 @@ author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
 date: "11/22/2020"
 output:
   pdf_document:
-  toc: TRUE
-toc_depth: 4
+    toc: TRUE
+    toc_depth: 4
 urlcolor: purple
 ---
 ```{r setup, include=FALSE}
