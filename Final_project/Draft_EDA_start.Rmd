@@ -133,6 +133,7 @@ ratings_disabled | boolian value if the owner of the video disabled ratings
 country_code | code created to identify country of origin
 view_target | Above (1) or below  (0) the mean views from country of origin
 view_global_target | Above (1) or below  (0) the mean views globally
+tag_count | number of metadata tags applied to each video
  
 
 ## DATA PREPARATION
@@ -147,7 +148,8 @@ ca_mean <- mean(ca_set$views)
 ca_set <- ca_set%>%
   mutate(country = 'CA')%>%
   mutate(country_code = 1)%>%
-  mutate(view_target = ifelse(views > ca_mean,1,0))
+  mutate(view_target = ifelse(views > ca_mean,1,0))%>%
+  mutate(tag_count = 1+(str_count(ca_set$tags, ';')))
 ```
 
 ```{r de_data_prep}
@@ -159,7 +161,8 @@ de_set <- de_set%>%
   mutate(country = 'DE')%>%
   mutate(country_code = 2)%>%
   filter(complete.cases(de_set))%>%
-  mutate(view_target = ifelse(views > de_mean,1,0))
+  mutate(view_target = ifelse(views > de_mean,1,0))%>%
+  mutate(tag_count = 1+(str_count(de_set$tags, ';')))
 ```
 
 ```{r fr_data_prep}
@@ -171,7 +174,8 @@ fr_set <- fr_set%>%
   mutate(country = 'FR')%>%
   mutate(country_code = 3)%>%
   filter(complete.cases(fr_set))%>%
-  mutate(view_target = ifelse(views > fr_mean,1,0))
+  mutate(view_target = ifelse(views > fr_mean,1,0))%>%
+  mutate(tag_count = 1+(str_count(fr_set$tags, ';')))
 ```
 
 ```{r gb_data_prep}
@@ -183,7 +187,8 @@ gb_set <- gb_set%>%
   mutate(country = 'GB')%>%
   mutate(country_code = 4)%>%
   filter(complete.cases(gb_set))%>%
-  mutate(view_target = ifelse(views > gb_mean,1,0))
+  mutate(view_target = ifelse(views > gb_mean,1,0))%>%
+  mutate(tag_count = 1+(str_count(gb_set$tags, ';')))
 ```
 
 ```{r us_data_prep}
@@ -195,11 +200,12 @@ us_set <- us_set%>%
   mutate(country = 'US')%>%
   mutate(country_code = 5)%>%
   filter(complete.cases(us_set))%>%
-  mutate(view_target = ifelse(views > us_mean,1,0))
+  mutate(view_target = ifelse(views > us_mean,1,0))%>%
+  mutate(tag_count = 1+(str_count(us_set$tags, ';')))
 ```
 
 ```{r merge_datasets}
-mergeCols = c('video_id','trending_date','title','channel_title','category_id','publish_time','tags','views','likes','dislikes','comment_count','thumbnail_link','comments_disabled','ratings_disabled','video_error_or_removed','description','country','country_code', 'view_target')
+mergeCols = c('video_id','trending_date','title','channel_title','category_id','publish_time','tags','views','likes','dislikes','comment_count','thumbnail_link','comments_disabled','ratings_disabled','video_error_or_removed','description','country','country_code', 'view_target','tag_count')
 
 full_set <- ca_set %>% full_join(de_set, by=mergeCols)
 full_set <- full_set %>% 
@@ -235,7 +241,7 @@ us_set <- us_set %>%
 Canada data
 
 ```{r summary_ca}
-summaryca <- ca_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryca <- ca_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summaryca)
 
 ggpairs(
@@ -249,7 +255,7 @@ corrplot(ca_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_de}
-summaryde <- de_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryde <- de_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summaryus)
 
 ggpairs(
@@ -263,7 +269,7 @@ corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 
 
 ```{r summary_us}
-summaryus <- us_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryus <- us_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summaryus)
 
 ggpairs(
@@ -276,7 +282,7 @@ corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_us}
-summarygb <- gb_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summarygb <- gb_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summarygb)
 
 ggpairs(
@@ -289,7 +295,7 @@ corrplot(gb_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_fr}
-summaryfr <- fr_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summaryfr <- fr_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summaryfr)
 
 ggpairs(
@@ -302,7 +308,7 @@ corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 ```
 
 ```{r summary_global}
-summarygl <- full_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled)
+summarygl <- full_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summarygl)
 
 ggpairs(
@@ -312,12 +318,6 @@ ggpairs(
 
 fr_corr <- cor(summarygl)
 corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
-```
-
-
-
-```{r}
-
 ```
 
 
