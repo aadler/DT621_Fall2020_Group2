@@ -1,8 +1,0 @@
-base
-ggplot2
-knitr
-MASS
-lattice
-caret
-corrplot
-data.table

@@ -104,7 +104,7 @@ kable(missingPreds, digits = 2L, caption = 'Predictors with Missing Observations
 ```
 
 `STARS` is especially sparse, but as noted in the assignment, this may be an
-indication in and of its own. It is reasonable to assume that the vinters of a
+indication in and of its own. It is reasonable to assume that the vintners of a
 good wine want it to be rated. If they do not submit it for rating, that may be
 an indication of their lack of faith in the wine. How to factor this into the
 analysis will be decided individually by the modelers in this assignment. The
@@ -308,7 +308,7 @@ ggplot(m1predictorDTM[metric %chin% nmtrnINT], aes(x = value)) +
 Here too, `AcidIndex` and `LabelAppeal` look very similar to their
 pre-imputation distribution. What stands out is `STARS`. Both the Poisson and
 the negative binomial models are either unimodal or have to consecutive values
-sharing the mode, due to their inherent nature as discrete disctibutions. What
+sharing the mode, due to their inherent nature as discrete distributions. What
 is seen here is that 1 star is empirically less common than 0 (unrated) or 2
 stars. On the one hand, this could simply be noise (process variance) or
 parameter error (finite sample size). On the other, it could indicate the need
@@ -364,7 +364,7 @@ m1PFitAIC <- AIC(m1PFit$finalModel)
 
 \small
 ```{r m1PTable}
-# P1:Print results. This needed to ne in its own section so that the LaTeX
+# P1:Print results. This needed to be in its own section so that the LaTeX
 # commands to change the text size can be wrapped around it.
 kable(summary(m1PFit$finalModel)$coefficients,
       caption = "Model 1 Poisson Regression Output")
@@ -469,18 +469,36 @@ parameter error. These include `VolatileAcidity`, `LabelAppeal`, `pH`,
 As the dispersion from the Poisson model was less than 1, at first blush, it is
 not expected that the negative binomial model will outperform the Poisson.
 
-```{r m1NBTrain, cache=0}
+```{r m1NBTrain}
 # NB1: There is no built-in AIC stepping in caret, so using basic glm.nb and
-# then calling stepAIC on saturated model
-glmc <- glm.control(maxit = 40, epsilon = 1e-8)
-set.seed(72)
+# then calling stepAIC on saturated model. Once done, investigated some one-off
+# possible enhancements due to issues with glm.nb
+# See https://stackoverflow.com/questions/11749977/why-does-glm-nb-throw-a-missing-value-error-only-on-very-specific-inputs
+# For speed, only final called model is evaluated.
+set.seed(872)
 m1NBFitStart <- glm.nb(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
                          AcidIndex * FixedAcidity * VolatileAcidity * pH +
                          Rated:STARS + LabelAppeal:Rated +
                          LabelAppeal:Rated:STARS - INDEX - STARS,
-                       data = m1trnImp, control = glmc, link = log)
+                       data = m1trnImp, link = log)
+m1NBFitStep <- stepAIC(m1NBFitStart, direction = 'both', trace = 0)
 
-m1NBFit <- stepAIC(m1NBFitStart, direction = 'both', trace = 0)
+# Last call from automated procedure
+# TARGET ~ FixedAcidity + VolatileAcidity + Chlorides + FreeSulfurDioxide + 
+#     TotalSulfurDioxide + pH + Sulphates + Alcohol + LabelAppeal + 
+#     AcidIndex + Rated + FreeSulfurDioxide:TotalSulfurDioxide + 
+#     FixedAcidity:AcidIndex + VolatileAcidity:AcidIndex + Rated:STARS + 
+#     LabelAppeal:Rated + LabelAppeal:Rated:STARS
+
+# Removing VolatileAcidity improved the AIC
+
+m1NBFit <- glm.nb(formula = TARGET ~ FixedAcidity + Chlorides +
+                    FreeSulfurDioxide + TotalSulfurDioxide + pH + Sulphates +
+                    Alcohol + LabelAppeal + AcidIndex + Rated +
+                    FreeSulfurDioxide:TotalSulfurDioxide +
+                    FixedAcidity:AcidIndex + VolatileAcidity:AcidIndex +
+                    Rated:STARS + LabelAppeal:Rated + LabelAppeal:Rated:STARS,
+                  data = m1trnImp, link = log)
 
 # NB1: Save AIC
 m1NBFitAIC <- AIC(m1NBFit)
