@@ -30,7 +30,7 @@ set.seed(65408)
 urlRemote  = "https://raw.githubusercontent.com/"
 pathGithub = "aadler/DT621_Fall2020_Group2/master/HW5/data/"
 fileTrain = "wine-training-data.csv"
-fileTest = "wine-evaluation-data.csv"
+fileEval = "wine-evaluation-data.csv"
 
 # Read training file
 DT <- fread(paste0(urlRemote, pathGithub, fileTrain))
@@ -203,7 +203,8 @@ Lastly, the complete dataset exhibits an average of
 `r prettyNum(mean(DT$TARGET), digits = 3L)` cases being bought, with the
 distribution below:
 
-```{r targetH}
+```{r targetH, fig.height=2, fig.width=3}
+# Plot distribution of TARGET
 ggplot(DT[, .(TARGET)], aes(x = TARGET)) +
   geom_histogram(binwidth = FDbin, fill = 'darkolivegreen4')
 ```
@@ -222,8 +223,8 @@ estimation on the supplied evaluation set.
 # Create training and testing split
 set.seed(1004)
 trnIDX <- createDataPartition(DT$TARGET, p = 0.7)
-trnX <- DT[trnIDX$Resample1, ]
-tstX <- DT[!trnIDX$Resample1, ]
+trnSet <- DT[trnIDX$Resample1, ]
+tstSet <- DT[!trnIDX$Resample1, ]
 ```
 
 ## Poisson Model 1 & Negative Binomial Model 1
@@ -236,13 +237,13 @@ will be true if `STARS` is missing, and then only use this variable and its
 interaction with `STARS` in the model, and not `STARS` by itself. 
 
 ```{r model1addVars}
-# Copy the training set to leave a pristine version for others
-m1trnX <- copy(trnX)
+# P1 & NB1: Copy the training set to leave a pristine version for others
+m1trn <- copy(trnSet)
 
-# Add the "rated" factor variable
-m1trnX[, Rated := factor(ifelse(is.na(STARS), 'Unrated', 'Rated'),
-                         levels = c('Unrated', 'Rated'),
-                         labels = c('Unrated', 'Rated'))]
+# P1 & NB1: Add the "rated" factor variable
+m1trn[, Rated := factor(ifelse(is.na(STARS), 'Unrated', 'Rated'),
+                        levels = c('Unrated', 'Rated'),
+                        labels = c('Unrated', 'Rated'))]
 ```
 
 ### Imputation
@@ -262,30 +263,30 @@ replaced by 0 so as not to be imputed, as per the explanation above. The
 preprocessing will also check for near-zero value predictors.
 
 ```{r model1impute}
-# Create bagged-tree imputation model
+# P1 & NB1: Create bagged-tree imputation model
 set.seed(89)
-m1trnXi <- preProcess(m1trnX, method =c('nzv', 'bagImpute'))
+m1trnI <- preProcess(m1trn, method =c('nzv', 'bagImpute'))
 
-# Replace missing STARS with 0s
-m1trnX[is.na(STARS), STARS := 0L]
+# P1 & NB1: Replace missing STARS with 0s
+m1trn[is.na(STARS), STARS := 0L]
 
-# Impute the remaining NAs
-m1trnXimp <- predict(m1trnXi, newdata = m1trnX)
+# P1 & NB1: Impute the remaining NAs
+m1trnImp <- predict(m1trnI, newdata = m1trn)
 ```
 
 It will be instructive to compare the shapes of the distributions after
 imputation to those before imputation.
 
 ```{r m1postImputeD, fig.height=5, fig.width=7}
-# Isolate numeric only predictors
-m1predictorDT <- m1trnXimp[, .SD, .SDcols = nmtrn]
+# P1 & NB1: Isolate numeric only predictors
+m1predictorDT <- m1trnImp[, .SD, .SDcols = nmtrn]
 
-# Melt them from wide to long format
+# P1 & NB1: Melt them from wide to long format
 m1predictorDTM <- melt(m1predictorDT, variable.name = 'metric',
                      value.name = 'value',  variable.factor = FALSE,
                      measure.vars = nmtrn)
 
-# Using epanechnikov kernel to generate kernel-smoothed densities
+# P1 & NB1: Using Epanechnikov kernel to generate kernel-smoothed densities
 ggplot(predictorDTM[metric %chin% nmtrnDUB], aes(x = value)) +
   geom_density(kernel = 'epanechnikov') +
   facet_wrap( ~ metric, scales = 'free') +
@@ -297,7 +298,7 @@ implies the imputation was in line with the original distributions. Now for the
 histograms.
 
 ```{r m1postImputeH, fig.height=2, fig.width=7}
-# Generate histogram
+# P1 & NB1: Generate histogram
 ggplot(m1predictorDTM[metric %chin% nmtrnINT], aes(x = value)) +
   geom_histogram(binwidth = FDbin, fill = 'indianred4') +
   facet_wrap( ~ metric, scales = 'free') +
@@ -348,23 +349,23 @@ selected to be tested against the testing set. Using stepAIC precludes the use
 of k-fold cross validation.
 
 ```{r m1PTrain}
-# Using stepAIC so turn off cross-validation
+# P1: Using stepAIC so turn off cross-validation
 trc <- trainControl(method = 'none')
 set.seed(350047)
 m1PFit <- train(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
                   AcidIndex * FixedAcidity * VolatileAcidity * pH +
                   Rated:STARS + LabelAppeal:Rated + LabelAppeal:Rated:STARS -
-                  INDEX - STARS, data = m1trnXimp,
+                  INDEX - STARS, data = m1trnImp,
                 trControl = trc, method = 'glmStepAIC',
                 family = poisson(link = 'log'), direction = 'both', trace = 0)
-# Save AIC
+# P1: Save AIC
 m1PFitAIC <- AIC(m1PFit$finalModel)
 ```
 
 \small
 ```{r m1PTable}
-# Print results. This needed to ne in its own section so that the LaTeX commands
-# to change the text size can be wrapped around it.
+# P1:Print results. This needed to ne in its own section so that the LaTeX
+# commands to change the text size can be wrapped around it.
 kable(summary(m1PFit$finalModel)$coefficients,
       caption = "Model 1 Poisson Regression Output")
 ```
@@ -373,6 +374,7 @@ kable(summary(m1PFit$finalModel)$coefficients,
 #### Model Checking
 
 ```{r m1PFitCheck}
+# P1: Check the dispersion of the model
 m1PFitDisp <- sum(residuals(m1PFit$finalModel, type = 'pearson') ^ 2) /
   m1PFit$finalModel$df.residual
 ```
@@ -383,7 +385,7 @@ parameter of `r prettyNum(m1PFitDisp, digits = 3L)` which is deemed acceptable.
 
 #### Coefficient Discussion
 Similar to the master data set, the training data set has an empirical mean
-purchased cases of `r prettyNum(mean(m1trnXimp$TARGET), digits = 3L)`. Having no
+purchased cases of `r prettyNum(mean(m1trnImp$TARGET), digits = 3L)`. Having no
 other information, the Poisson model expects about
 `r prettyNum(exp(m1PFit$finalModel$coefficients[[1]]), digits = 3L)` cases, due
 to the intercept value of `r m1PFit$finalModel$coefficients[[1]]`. This means
@@ -406,8 +408,19 @@ Sulphates, but in terms of AIC, leaving it in provided a better model than did
 taking it out.
 
 #### Variable Importance
-The further down the list below a variable preceded by a `-` is, the more
-important it is, as its removal would cause a greater disruption to the
+
+```{r m1PvarImp}
+# P1: Extract the Poisson variable importance and order it for display
+vIP <- varImp(m1PFit$finalModel)
+vIPn <- row.names(vIP)
+vIPDT <- data.table(Coefficients = vIPn, vIP)
+setorder(vIPDT, -Overall)
+kable(vIPDT, digits = 2L, caption = "Poisson Model Variable Importance")
+```
+
+The variable importance can also be seen from the trace of the step AIC
+procedure. The further down the list below a variable preceded by a `-` is, the
+more important it is, as its removal would cause a greater disruption to the
 deviance and the AIC. The three rating variables, being rated, the rating level,
 and the label appeal, are the most important variables when it comes to future
 case purchases.
@@ -456,48 +469,74 @@ parameter error. These include `VolatileAcidity`, `LabelAppeal`, `pH`,
 As the dispersion from the Poisson model was less than 1, at first blush, it is
 not expected that the negative binomial model will outperform the Poisson.
 
-```{r m1NBTrain, cache=TRUE}
-glmc <- glm.control(maxit = 25, epsilon = 1e-14)
+```{r m1NBTrain, cache=0}
+# NB1: There is no built-in AIC stepping in caret, so using basic glm.nb and
+# then calling stepAIC on saturated model
+glmc <- glm.control(maxit = 40, epsilon = 1e-8)
 set.seed(72)
 m1NBFitStart <- glm.nb(TARGET ~ . + FreeSulfurDioxide:TotalSulfurDioxide +
                          AcidIndex * FixedAcidity * VolatileAcidity * pH +
                          Rated:STARS + LabelAppeal:Rated +
                          LabelAppeal:Rated:STARS - INDEX - STARS,
-                       data = m1trnXimp, control = glmc, link = log)
+                       data = m1trnImp, control = glmc, link = log)
 
 m1NBFit <- stepAIC(m1NBFitStart, direction = 'both', trace = 0)
 
-# Save AIC
+# NB1: Save AIC
 m1NBFitAIC <- AIC(m1NBFit)
 ```
 
 \small
 ```{r m1NBTable}
-# Print results. This needed to ne in its own section so that the LaTeX commands
-# to change the text size can be wrapped around it.
+# NB1: Print results. This needed to be in its own section so that the LaTeX
+# commands to change the text size can be wrapped around it.
 kable(summary(m1NBFit)$coefficients,
       caption = "Model 1 Negative Binomial Regression Output")
 ```
 \normalsize
 
+#### Coefficient Discussion
+Similar to the Poisson model, having no other information, the negative binomial
+model expects about `r prettyNum(exp(m1NBFit$coefficients[[1]]), digits = 3L)`
+cases, due to the intercept value of `r m1NBFit$coefficients[[1]]`. This means
+that this model as well identifies factors which lean more to *increasing*
+purchases than to decreasing purchases.
+
+The absolute magnitude of the coefficients makes less sense in this model than
+in the Poisson. The factors related to appeal do increase the number of cases
+bought. However, the factors related to acidity tend to show more back-and-forth
+interactions than in the Poisson model.
+
+Also, there are more "insignificant" coefficients in this model, but these are
+all variables for which the AIC would increase should they have been removed.
+
+#### Variable Importance
+
+```{r m1NBvarImp}
+# NB1: Extract the NegBinom variable importance and order it for display
+vINB <- varImp(m1NBFit)
+vINBn <- row.names(vINB)
+vINBDT <- data.table(Coefficients = vINBn, vINB)
+setorder(vINBDT, -Overall)
+kable(vINBDT, digits = 2L,
+      caption = "Negative Binomial Model Variable Importance")
 ```
-                                       Df   AIC
-<none>                                    31905
-- Sulphates                             1 31906
-+ pH:AcidIndex                          1 31906
-- FreeSulfurDioxide:TotalSulfurDioxide  1 31906
-- VolatileAcidity:AcidIndex             1 31906
-+ Density                               1 31906
-+ ResidualSugar                         1 31906
-+ VolatileAcidity:pH                    1 31907
-+ CitricAcid                            1 31907
-+ FixedAcidity:pH                       1 31907
-+ FixedAcidity:VolatileAcidity          1 31907
-- FixedAcidity:AcidIndex                1 31907
-- pH                                    1 31907
-- Alcohol                               1 31907
-- Chlorides                             1 31907
-- LabelAppeal:Rated:STARS               1 31917
+
+The trace of the step procedure is less complete when using the `glm.nb`
+function in `R` and is not listed here.
+
+Lastly, the deviance for the negative binomial model is actually lower than that
+for the Poisson model, but its AIC is higher. Based on AIC only, the Poisson
+model's parsimony beats out the negative binomial's explanatory powers.
+
+```{r m1PNB}
+m1PNBC <- data.table(Model = c("Poisson 1", "Negative Binomial 1"),
+                     Deviance = c(m1PFit$finalModel$deviance,
+                                  m1NBFit$deviance),
+                     AIC = c(m1PFit$finalModel$aic,
+                             m1NBFit$aic))
+kable(m1PNBC, digits = 3L,
+      caption = "Poisson 1 and NegBinom 1 Goodness-of-Fit Comparison")
 ```
 
 ## Poisson Model #2
@@ -511,16 +550,64 @@ kable(summary(m1NBFit)$coefficients,
 # SELECT MODELS
 ## Model Selection Criteria
 We will look at RMSE and MAE as our metrics and select the model which performs
-best on both. If no model peforms best on both, the AIC of the model results on
-the training set will be used to break the tie.
+best on both. If no model performs best on both, the AIC of the model results on
+the training set will be used to break the tie, as the AIC is an estimate of the
+average out-of-sample performance of the model.
+
+```{r compTable}
+compTable <- data.table(Models = c("Poisson 1", "Poisson 2",
+                                   "Neg. Binom. 1", "Neg. Binom. 2",
+                                   "MultiLinear 1", "MultiLinear 2"),
+                        RMSE = double(6), MAE = double(6),
+                        TrainAIC = double(6))
+```
 
 ## Model Test Results
+The test set data needs to be processed identically to the training set. Since
+the number of cases needs to be integral the predicted values will be rounded to
+the nearest integer.
 
 ### Poisson Model 1
+
+```{r m1TestProcess}
+# P1 & NB1: process test data
+m1tst <- copy(tstSet)
+m1tst[, Rated := factor(ifelse(is.na(STARS), 'Unrated', 'Rated'),
+                        levels = c('Unrated', 'Rated'),
+                        labels = c('Unrated', 'Rated'))]
+set.seed(89)
+m1tstI <- preProcess(m1tst, method =c('nzv', 'bagImpute'))
+m1tst[is.na(STARS), STARS := 0L]
+m1tstImp <- predict(m1tstI, newdata = m1tst)
+```
+```{r m1PTest}
+# P1: Test Model
+m1PtstPred <- round(predict(m1PFit, newdata = m1tstImp))
+
+compTable[1, 2] <- m1PRMSE <- RMSE(m1PtstPred, m1tstImp$TARGET)
+compTable[1, 3] <- m1PMAE <- MAE(m1PtstPred, m1tstImp$TARGET)
+compTable[1, 4] <- m1PFitAIC
+```
+
+**Poisson Model 1** has an RMSE of `r prettyNum(m1PRMSE, digits = 2L)`, an MAE
+of `r prettyNum(m1PMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m1PFitAIC, digits = 2L)`.
 
 ### Poisson Model 2
 
 ### Negative Binomial Model 1
+```{r m1NBTest}
+# NB1: Test Model
+m1NBtstPred <- round(predict(m1NBFit, newdata = m1tstImp))
+compTable[3, 2] <- m1NBRMSE <- RMSE(m1NBtstPred, m1tstImp$TARGET)
+compTable[3, 3] <- m1NBMAE <- MAE(m1NBtstPred, m1tstImp$TARGET)
+compTable[3, 4] <- m1NBFitAIC
+```
+
+**Negative Binomial Model 1** has an RMSE of
+`r prettyNum(m1NBRMSE, digits = 2L)`, an MAE of
+`r prettyNum(m1NBMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m1NBFitAIC, digits = 2L)`.
 
 ### Negative Binomial Model 2
 
@@ -529,6 +616,12 @@ the training set will be used to break the tie.
 ### Multiple Linear Regression Model 2
 
 ## Comparsion
+
+```{r modelTestResults}
+# Compare results on test set
+kable(compTable, digits = 3L,
+      caption = "Model Results on Test Set")
+```
 
 ## Selection
 
@@ -543,8 +636,10 @@ the training set will be used to break the tie.
 ```{r setup2, include=FALSE}
 knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
+<!-- Assignment -->
 ```{r loadData}
 ```
+<!-- Data Exploration -->
 ```{r missingVal}
 ```
 ```{r statsN}
@@ -557,6 +652,7 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r targetH}
 ```
+<!-- Data Preparation -->
 ```{r trainTestSplit}
 ```
 ```{r model1addVars}
@@ -567,9 +663,34 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1postImputeH}
 ```
+<!-- Build Models -->
 ```{r m1PTrain}
 ```
 ```{r m1PTable}
 ```
 ```{r m1PFitCheck}
+```
+```{r m1PvarImp}
+```
+```{r m1NBTrain}
+```
+```{r m1NBTable}
+```
+```{r m1NBvarImp}
+```
+```{r m1PNB}
+```
+<!-- Other prep and build goes here -->
+<!-- Select Models -->
+```{r compTable}
+```
+```{r m1TestProcess}
+```
+```{r m1PTest}
+```
+<!-- Poisson 2 Test goes here -->
+```{r m1NBTest}
+```
+<!-- Remaining Test sets go here -->
+```{r modelTestResults}
 ```
