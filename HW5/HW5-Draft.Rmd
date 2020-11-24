@@ -22,6 +22,8 @@ library(MASS)
 library(caret)
 library(corrplot)
 library(data.table)
+library(dplyr)
+library(mice)
 
 # Set master seed
 set.seed(65408)
@@ -314,6 +316,27 @@ stars. On the one hand, this could simply be noise (process variance) or
 parameter error (finite sample size). On the other, it could indicate the need
 for a zero-inflated version of the counting distributions.
 
+## Multiple Linear Regression 1 & Negative Binomial Model 2
+### Missing Data
+These models will deal with missing numerical data by imputing the NA's
+using the Multivariate imputation by chained equations (MICE) method. Multiple
+imputation involves creating multiple predictions for each missing value, helping 
+to account for the uncertainty in the individual imputations. 
+
+```{r model2impute}
+set.seed(123)
+
+# ML1 & NB2 data transformation
+# MICE imputation on train and test set
+m2train <- complete(mice(data = trnSet %>% select(-INDEX),
+                         method = "pmm", print = FALSE), 3)
+
+m2test <- complete(mice(data = tstSet %>% select(-INDEX),
+                        method = "pmm", print = FALSE), 3)
+
+```
+
+
 # BUILD MODELS
 ## Poisson Model 1 & Negative Binomial Model 1
 The same person is building these two models, and the model setups will be
@@ -559,9 +582,103 @@ kable(m1PNBC, digits = 3L,
 
 ## Poisson Model #2
 
+
 ## Negative Binomial Model #2
 
+#### Baseline Model 
+We will start with a simple negative binomial regression model to serve as a 
+baseline. This includes all variables in the dataset.
+
+```{r m2NBTrainBase}
+
+m2NBBase <- glm.nb(TARGET ~ ., data = m2train)
+knitr::kable(summary(m2NBBase)$coefficients, digits = 3L,
+             caption = 'Negative Binomial Regression Model 2 - Base Negative Binomial Output')
+
+```
+Immediately, we can see a few variables that do not meet the 0.05
+p-value threshold. 
+
+#### Enhanced Model
+Backwards stepwise regression is performed and the result is a model with the 
+following variables *removed*: `FixedAcidity`, `CitricAcid`, `ResidualSugar`, 
+and `Density`. Because the `Sulphates` variable is very close to the 0.05
+p-value threshold of significance, we will remove it as well. 
+
+```{r m2NBTrain}
+
+m2NBFit <- glm.nb(TARGET ~ VolatileAcidity + Chlorides +
+                FreeSulfurDioxide + TotalSulfurDioxide + pH + Alcohol + 
+                LabelAppeal + AcidIndex + STARS, data = m2train)
+
+knitr::kable(summary(m2NBFit)$coefficients, digits = 3L,
+             caption = 'Negative Binomial Regression Model 2 - Final Negative Binomial Output')
+
+```
+
+#### Coefficient Discussion
+The intercept of the final model tells us that there is typically ~1 case 
+of wine purchased. Some things to note: 
+
+* Stars and label appeal contribute the most positively to the number of
+cases of wine purchased. Intuitively, this makes sense - the higher the
+rating and the prettier the bottle, the more cases we would expect to be
+sold. 
+* Free Sulfur Dioxide and Total Sulfur Dioxide have a very tiny effect on
+the number of cases sold (rounded to 3 decimal places, the impact is 0!)
+* All of the remaining variables except alcohol have a negative effect on 
+the number of cases purchased. 
+
+
 ## Multiple Linear Regrssion Model # 1
+One drawback to traditional multiple linear regression models is that the 
+forecasted counts are not integers. We will deal with this by rounding the
+predictions to the nearest whole number. 
+
+#### Baseline Model
+We will start with a simple linear model to serve as a baseline. This includes
+all variables in the dataset. 
+
+```{r m1MLTrainBase}
+
+m1MLBase <- lm(TARGET ~ ., data = m2train)
+knitr::kable(summary(m1MLBase)$coefficients, digits = 3L,
+             caption = 'Multiple Regression Model 1 - Base Linear Regression Output')
+
+```
+Most of the variables in the dataset are significant, but we can immediately
+see a few that are above the 0.05 p-value threshold. 
+
+#### Enhanced Model
+Backwards stepwise regression is performed and the result is a model with the 
+following variables *removed*: `FixedAcidity`, `CitricAcid`, `ResidualSugar`, 
+and `Density`. 
+```{r m1MLTrain}
+
+m1MLFit <- lm(TARGET ~ VolatileAcidity + Chlorides + FreeSulfurDioxide + TotalSulfurDioxide + pH +
+             Sulphates + Alcohol + LabelAppeal + AcidIndex + STARS, data = m2train)
+knitr::kable(summary(m1MLFit)$coefficients, digits = 3L,
+             caption = 'Multiple Regression Model 1 - Final Linear Regression Output')
+
+```
+
+#### Coefficient Discussion
+The intercept of the final model tells us that there are typically ~3 cases 
+of wine purchased. Some things to note: 
+
+* As expected, the number of stars has the largest, positive impact on the 
+number of cases sold. This makes sense -- the higher the rating of a wine,
+the more of it we would expect to be purchased. 
+* Label appeal has the second largest impact on the number of cases sold. 
+They say one shouldn't judge a book by its cover (or in this case, a wine
+by its label), but it does appear to have quite a significant impact on
+sales. 
+* Alcohol also has a small positive impact on the number of cases purchased. 
+This means that the more alcohol a wine has, the more cases of it will be
+purchased. 
+* Acid Index, Sulphates, pH, Chlorides, and VolatileAcidity all have a
+negative impact on the number of cases sold. 
+
 
 ## Multiple Linear Regrssion Model # 2
 
@@ -629,7 +746,34 @@ compTable[3, 4] <- m1NBFitAIC
 
 ### Negative Binomial Model 2
 
+```{r m2NBTest}
+# NB2: Test Model
+m2NBtstPred <- round(predict(m2NBFit, newdata = m2test))
+compTable[4, 2] <- m2NBRMSE <- RMSE(m2NBtstPred, m2test$TARGET)
+compTable[4, 3] <- m2NBMAE <- MAE(m2NBtstPred, m2test$TARGET)
+compTable[4, 4] <- m2NBFitAIC <- AIC(m2NBFit)
+```
+
+**Negative Binomial Model 2** has an RMSE of
+`r prettyNum(m2NBRMSE, digits = 2L)`, an MAE of
+`r prettyNum(m2NBMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m2NBFitAIC, digits = 2L)`.
+
 ### Multiple Linear Regression Model 1
+```{r m1MLTest}
+# ML1: Test Model
+m1MLtstPred <- round(predict(m1MLFit, newdata = m2test))
+compTable[5, 2] <- m1MLMSE <- RMSE(m1MLtstPred, m2test$TARGET)
+compTable[5, 3] <- m1MLMAE <- MAE(m1MLtstPred, m2test$TARGET)
+compTable[5, 4] <- m1MLFitAIC <- AIC(m1MLFit)
+
+```
+
+**Multiple Linear Regression Model 1** has an RMSE of
+`r prettyNum(m1MLMSE, digits = 2L)`, an MAE of
+`r prettyNum(m1MLMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m1MLFitAIC, digits = 2L)`.
+
 
 ### Multiple Linear Regression Model 2
 
@@ -681,6 +825,8 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1postImputeH}
 ```
+```{r model2impute}
+```
 <!-- Build Models -->
 ```{r m1PTrain}
 ```
@@ -698,6 +844,14 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1PNB}
 ```
+```{r m2NBTrainBase}
+```
+```{r m2NBTrain}
+```
+```{r m1MLTrainBase}
+```
+```{r m1MLTrain}
+```
 <!-- Other prep and build goes here -->
 <!-- Select Models -->
 ```{r compTable}
@@ -709,6 +863,10 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 <!-- Poisson 2 Test goes here -->
 ```{r m1NBTest}
 ```
-<!-- Remaining Test sets go here -->
+```{r m2NBTest}
+```
+```{r m1MLTest}
+```
+<!-- ML 2 Test goes here -->
 ```{r modelTestResults}
 ```
