@@ -3,7 +3,7 @@ title: "DATA 621 - Business Analytics and Data Mining"
 subtitle: 'Fall 2020 - Group 2 - Homework #5'
 author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
     Bryan Persaud, Jeff Shamp
-date: "11/22/2020"
+date: "11/28/2020"
 output:
   pdf_document:
     toc: TRUE
@@ -22,8 +22,10 @@ library(MASS)
 library(caret)
 library(corrplot)
 library(data.table)
-library(dplyr)
 library(mice)
+library(pscl)
+library(mpath)
+library(dplyr)
 
 # Set master seed
 set.seed(65408)
@@ -53,7 +55,7 @@ approximately 12,000 records representing commercially available wines. The
 purchased by wine distribution companies after sampling that wine. These cases
 would be used to provide tasting samples to restaurants and wine stores around
 the United States. The more sample cases purchased, the more likely is a wine to
-be sold at a high end restaurant.A large wine manufacturer is studying the data
+be sold at a high end restaurant. A large wine manufacturer is studying the data
 in order to predict the number of wine cases ordered based upon the wine
 characteristics. If the wine manufacturer can predict the number of cases, then
 that manufacturer will be able to adjust their wine offering to maximize sales.
@@ -69,7 +71,7 @@ variables that you derive from the variables provided).
 The data is composed of the following variables:
 
 |VARIABLE NAME|DEFINITION|THEORETICAL EFFECT|
-|--|--|--|
+|--|----|---|
 |INDEX|Identification Variable (do not use)|None|
 |TARGET|Number of Cases Purchased|None|
 |AcidIndex|Proprietary method of testing total acidity of wine by using a weighted average||
@@ -205,7 +207,7 @@ Lastly, the complete dataset exhibits an average of
 `r prettyNum(mean(DT$TARGET), digits = 3L)` cases being bought, with the
 distribution below:
 
-```{r targetH, fig.height=2, fig.width=3}
+```{r targetH, fig.height=2, fig.width=3, fig.align='center'}
 # Plot distribution of TARGET
 ggplot(DT[, .(TARGET)], aes(x = TARGET)) +
   geom_histogram(binwidth = FDbin, fill = 'darkolivegreen4')
@@ -229,7 +231,7 @@ trnSet <- DT[trnIDX$Resample1, ]
 tstSet <- DT[!trnIDX$Resample1, ]
 ```
 
-## Poisson Model 1 & Negative Binomial Model 1
+## Poisson Model #1 & Negative Binomial Model #1
 ### Missing Data
 The missing data can be split into two groups: `STARS` and the rest. For all the
 others, I do not think there is signal encoded in the "missingness" and thus
@@ -316,29 +318,61 @@ stars. On the one hand, this could simply be noise (process variance) or
 parameter error (finite sample size). On the other, it could indicate the need
 for a zero-inflated version of the counting distributions.
 
-## Multiple Linear Regression 1 & Negative Binomial Model 2
+## Poisson Model #2 & Multiple Linear Regrssion Model #1
+
+The right balance of the chemical properties of the wine is essential to make 
+it tastes, looks, and smells delightful, in addition to having a long shelf-life.
+Typically, citric acid and alcohol are the main positive attributes a wine 
+should have, while volatile acidity and sulphates are the main negative ones. 
+However, the dataset has negative values instead of near-zero in some of these 
+variables describing the chemical properties of the wine. Because little is given 
+about whether or not these variables were normalized, absolute values will be 
+taken assuming there was an error made during data collection. 
+
+Lastly, to handle missing data for `STARS`, they will be replaced by 0, while 
+the chemical properties will be imputed. Because the predictive mean matching 
+imputation method combines the standard linear regression and the nearest-neighbor 
+imputation approach, Model Set #2 elected to fill in missing values of a 
+continuous variable by using it. Afterward, the data is pre-processed to fulfill 
+the assumption of normality using the Yeo-Johnson transformation 
+[(Yeo & Johnson, 2000)](https://www.jstor.org/stable/2673623?seq=1). This technique 
+attempts to find the value of lambda that minimizes the Kullback-Leibler distance 
+between the normal distribution and the transformed distribution. This method 
+has the advantage of working without having to worry about the domain of x.
+
+```{r m2clean}
+set.seed(525)
+m2train <- copy(trnSet[,-1])
+m2train[,c(2:8,11:12)] <- abs(m2train[,c(2:8,11:12)])
+m2train$STARS[is.na(m2train$STARS)] <- 0
+m2train.impute <- mice(m2train, method = 'pmm', print = FALSE)
+m2train <- complete(m2train.impute)
+m2train.r <- m2train$TARGET
+m2train.p <- m2train[,-1]
+pre.process <- preProcess(m2train.p, method = c("YeoJohnson"))
+m2train.p <- predict(pre.process, m2train.p)
+m2train[,c(2:13,15)] <- m2train.p[,c(1:12,14)]
+```
+
+## Multiple Linear Regression #2 & Negative Binomial Model #2
 ### Missing Data
 These models will deal with missing numerical data by imputing the NA's
 using the Multivariate imputation by chained equations (MICE) method. Multiple
 imputation involves creating multiple predictions for each missing value, helping 
 to account for the uncertainty in the individual imputations. 
 
-```{r model2impute}
+```{r model3impute}
 set.seed(123)
-
-# ML1 & NB2 data transformation
+# ML2 & NB2 data transformation
 # MICE imputation on train and test set
-m2train <- complete(mice(data = trnSet %>% select(-INDEX),
+m3train <- complete(mice(data = trnSet %>% select(-INDEX),
                          method = "pmm", print = FALSE), 3)
-
-m2test <- complete(mice(data = tstSet %>% select(-INDEX),
+m3test <- complete(mice(data = tstSet %>% select(-INDEX),
                         method = "pmm", print = FALSE), 3)
-
 ```
 
-
 # BUILD MODELS
-## Poisson Model 1 & Negative Binomial Model 1
+## Poisson Model #1 & Negative Binomial Model #1
 The same person is building these two models, and the model setups will be
 similar. Each model will follow a similar format, with only the family changing.
 Each will start with the saturated model including all the individual predictors
@@ -357,7 +391,7 @@ Each will start with the saturated model including all the individual predictors
     as is not merely an acid but a flavor provider as well. Also, five-way
     interactions lead to migraines.
   * `FreeSulfurDioxide` and `TotalSulfurDioxide`
-    * Again, a case of multiple theoretically related predictors
+    * Again, a case of multiple theoretically related predictors.
   * `LabelAppeal` with `Rated` and `LabelAppeal` with `Rated:STARS`
     * This is a later addition. The top three predictors in magnitude were
     `LabelAppeal`, `Rated`, and `Rated:STARS`. With all three being so strong,
@@ -580,21 +614,200 @@ kable(m1PNBC, digits = 3L,
       caption = "Poisson 1 and NegBinom 1 Goodness-of-Fit Comparison")
 ```
 
-## Poisson Model #2
+## Poisson Model #2 & Multiple Linear Regrssion Model #1
+The `TARGET` variable has 2734 observations with zero values. This could be a result 
+of the manufacturer not releasing the wine into the market, or that there were no 
+orders placed. Therefore, backward stepwise variable elimination for a zero-inflated 
+poisson (ZIP) analysis will be investigated to understand the conditions. This model is
+further compared to the same Poisson model to determine whether there is an improvement.
 
+In the ZIP model, the independent variable, $TARGET_i$, take zero values $TARGET_i \sim 0$ 
+with the probability $\omega_i$ or values from Poisson distribution 
+$TARGET_i \sim Pois(\lambda_i)$ with probability (1 - $\omega_i$). For $i = 1,..., n$, 
+it can be written as:
 
-## Negative Binomial Model #2
+\[P(Y_i = y_i) = \left\{\begin{matrix}\omega _i + (1-\omega_i)e^{-\lambda_i}), \text{ if } y_i = 0\\ (1-\omega_i)\frac{e^{-\lambda_i}\lambda_i^{y_i}}{y_i!},\text{ if } y_i > 0 \end{matrix}\right.\]
 
+Therefore, the zero-inflated poisson model have two parameters, $\lambda_i$ and 
+$\omega_i$, and linked with the predictor variables with the following:
+
+\[log\left(\frac{\omega_i}{1-\omega_i}\right) = \sum_{j=1}^{t}\gamma_{ji}Z_{ji},\]
+
+\[log\left(\lambda_i\right) = \sum_{j=1}^{k}\beta_{ji}X_{ji},\]
+
+where $Z_1,..., Z_l$ are the dependent variables for the first equation and 
+$X_1,..., X_k$ for the second one. The expected value and variance of the number 
+of cases purchased for the $i^{th}$ wine in the ZIP model are, respectively:
+
+\[E(Y_i) = \lambda_i(1 - \omega_i),\]
+
+\[Var(Y_i) = (1 - \omega_i)(\lambda_i - \omega_i\lambda_i^2).\]
+
+Similar to Poisson regression, the ZIP model assumes that the average number of 
+cases purchased equals the variance. For more information, refer to 
+[Zero-Inflated Poisson Regression](https://math.usu.edu/jrstevens/biostat/projects2013/rep_ZIP.pdf).
+
+### Poisson Model #2
+
+```{r m2poisson}
+set.seed(525)
+# Zero Inflated Poisson Model
+m2.pmodel <- zeroinfl(TARGET~., 
+                      dist = 'poisson', 
+                      model = TRUE, 
+                      data = m2train,
+                      link = "logit")
+# Backward Elimination
+m2.fpmodel <- be.zeroinfl(m2.pmodel, 
+                          data = m2train, 
+                          dist = 'poisson', 
+                          alpha = 0.05, 
+                          trace = FALSE)
+m2.poisson.aic <- AIC(m2.fpmodel)
+```
+
+Zero-inflated count models are two-component mixture models combining a point 
+mass at zero with a proper count distribution. Thus, there are two sources of 
+zeros: zeros may come from both the point mass and from the count component.
+
+\small
+```{r m2PTable}
+kable(summary(m2.fpmodel)$coefficients$count,
+      caption = "Zero Inflated Poisson Model #2 Count Output")
+kable(summary(m2.fpmodel)$coefficients$zero,
+      caption = "Zero Inflated Poisson Model #2 Zero Output")
+```
+\normalsize
+
+#### Model Checking
+
+```{r m2PFitCheck}
+# Dispersion statistic
+E2 <- resid(m2.fpmodel, type = "pearson")
+N  <- nrow(m2train)
+p  <- length(coef(m2.fpmodel))  
+dp <- sum(E2^2) / (N - p)
+
+# Poisson Model #2, same formula from ZIP model
+m2.poisson <- glm(TARGET ~ Alcohol + LabelAppeal + AcidIndex + STARS | VolatileAcidity + 
+                    CitricAcid + FreeSulfurDioxide + TotalSulfurDioxide + pH + 
+                    Sulphates + Alcohol + LabelAppeal + AcidIndex + STARS, 
+                  family = poisson(link = 'log'), data = m2train)
+vuong(m2.poisson, m2.fpmodel)
+```
+
+This model has a dispersion parameter of `r prettyNum(dp, digits = 3L)` which 
+suggests under-dispersion (i.e., variance < mean). This parameter indicates how 
+many times larger the variance is than the mean. Since the dispersion was less 
+than one, the conditional variance is smaller than the conditional mean. Models 
+that ignore under-dispersion will be overly conservative and may fail to detect 
+significant patterns. Generalized Poisson (GP) and Conway‐Maxwell‐Poisson (CMP)
+distributions are better choices for such modeling because they can handle both 
+over-dispersion and under-dispersion. But for the scope of this assignment, 
+it's apparent, from the Vuong test with the same Poisson model and the ZIP model, 
+that the zero-inflated Poisson model is a slight improvement over the Poisson 
+model. Therefore, the ZIP model will still be considered among others.
+
+#### Coefficient Discussion
+All of the predictors in both the count and inflation portions of the model are 
+statistically significant. This model fits the data significantly better than the 
+null model, i.e., the intercept-only model. The count model contains information 
+about variables that the parent Poisson model used to estimate `TARGET` on the 
+condition that `TARGET` > 0. The coefficients for all 4 regression variables are 
+statistically significant at a 99% confidence level. The coefficient for `AcidIndex`
+is negative, meaning that as the total acidity of wine goes up by a unit, the number 
+of purchased cases goes down by 2%. One the other hand, for the other variables, i.e. 
+`Alcohol`, `LabelAppeal` and `STARS`, as these increase, the number of purchased 
+cases will also increase. In particular, `LabelAppeal` can account for a 26% 
+increase in the number of wine cases sold if the visual appeal of the wine 
+scores increase by one unit and all other variables held constant. Whereas, there
+is a 19% increase in cases sold for each increase in the wine rating by a team of 
+experts, `STARS`.
+
+The zero model contains information about variables that the nested Logistic 
+Regression model has been used to estimate the probability of whether or not cases are
+purchased. Examining the variables with a negative regression coefficient, this
+suggests that as the factor for the specific chemical properties increases, the
+probability of no case being purchase decreases. This is in line with our intuition,
+particularly for the sulfur dioxide levels. When a wine has an unusually small 
+percentage of the Free and Total $SO_2$, this suggests the wine is chemically and/or 
+microbially unstable. Thus, if a wine manufacturer were to increase the sulfur 
+dioxide levels by one unit, the odds that the wine would certainly not be purchased 
+would decrease by a factor of 0.92 to 0.95. However, `LabelAppeal` is among the
+positive coefficients for the zero model. This is interpreted as the higher a 
+rating is for a bottle of wine, the more likely there will be no case purchase, and it
+doesn't seem reasonable.
+
+### Multiple Linear Regrssion Model #1
+
+Multiple Linear Regression Model #1 will be using the step function has an options 
+to use a process that both adds and removes variables in the model. It uses AIC 
+(Akaike information criterion) as a selection criterion. A full model and a null 
+are defined, and then the function will follow a procedure to find the model with 
+the lowest AIC. 
+
+```{r m1MLRFit}
+# Multiple Linear Regression model 
+set.seed(525)
+model.null = lm(TARGET ~ 1, data = m2train)
+model.full = lm(TARGET ~ ., data = m2train)
+
+# Step model used to derive final model, m1MLRFit  
+# step(model.null,
+#      scope = list(upper = model.full),
+#      direction = "both",
+#      data = m2train, 
+#      trace = FALSE)
+
+m1MLRFit = lm(TARGET ~ STARS + LabelAppeal + AcidIndex + TotalSulfurDioxide +
+                VolatileAcidity + FreeSulfurDioxide + Alcohol + CitricAcid + 
+                Chlorides + pH + Sulphates,
+              data = m2train)
+```
+
+\small
+```{r m1MLRTable}
+kable(summary(m1MLRFit)$coefficient,
+      caption = "Multiple Linear Regression Model #1 Output")
+```
+\normalsize
+
+#### Coefficient Discussion
+Contributing coefficients are those which lie within the 95% level of
+significance. A positive coefficient indicates that as the value of the
+predictor increases, the response variable also tends to increase. A negative
+coefficient suggests that as the predictor increases, the response variable
+tends to decrease.
+
+The intercept itself suggests that with no other information about the wine,
+there will be cases sold. The other positive predictors suggest that increasing
+`STARS` and `LabelAppeal` will result in an increase in the number of case purchased. 
+These make sense intuitively. Moreover, as discussed in the Poisson Model #2, the 
+right balance of $SO_2$ lead to better wine, thus the coefficients are rather
+small and have a smaller effect when it is increased. This reasoning is similar 
+for `Alcohol` levels. Next, `CitricAcid`, commonly used as an acid supplement 
+during fermentation, helps winemakers boost the acidity of their wine and 
+stabilize ferric haze. So, it makes sense that the higher `CitricAcid` is, the
+more cases would be sold. But once again, these need to be balance right.
+
+On the contrary, an increase in a unit of volatile acidity results in the decrease
+of case purchases. Volatile acidity is caused by bacteria or certain yeasts. This also
+can increase the acid index and pH if it is high. This is why sulfur dioxide is used 
+to carefully control it. In all, this model should not be taken as fixed, when it 
+comes to chemical processes, the wine manufacturer needs to take care of what to
+increase and decrease in order to reach equilibrium.
+
+## Negative Binomial Model #2 & Multiple Linear Regrssion Model #2
+
+### Negative Binomial Model #2
 #### Baseline Model 
 We will start with a simple negative binomial regression model to serve as a 
 baseline. This includes all variables in the dataset.
 
 ```{r m2NBTrainBase}
-
-m2NBBase <- glm.nb(TARGET ~ ., data = m2train)
+m2NBBase <- glm.nb(TARGET ~ ., data = m3train)
 knitr::kable(summary(m2NBBase)$coefficients, digits = 3L,
-             caption = 'Negative Binomial Regression Model 2 - Base Negative Binomial Output')
-
+             caption = 'Negative Binomial Regression Model #2 - Base Output')
 ```
 Immediately, we can see a few variables that do not meet the 0.05
 p-value threshold. 
@@ -606,14 +819,11 @@ and `Density`. Because the `Sulphates` variable is very close to the 0.05
 p-value threshold of significance, we will remove it as well. 
 
 ```{r m2NBTrain}
-
 m2NBFit <- glm.nb(TARGET ~ VolatileAcidity + Chlorides +
                 FreeSulfurDioxide + TotalSulfurDioxide + pH + Alcohol + 
-                LabelAppeal + AcidIndex + STARS, data = m2train)
-
+                LabelAppeal + AcidIndex + STARS, data = m3train)
 knitr::kable(summary(m2NBFit)$coefficients, digits = 3L,
-             caption = 'Negative Binomial Regression Model 2 - Final Negative Binomial Output')
-
+             caption = 'Negative Binomial Regression Model #2 - Final Output')
 ```
 
 #### Coefficient Discussion
@@ -629,8 +839,7 @@ the number of cases sold (rounded to 3 decimal places, the impact is 0!)
 * All of the remaining variables except alcohol have a negative effect on 
 the number of cases purchased. 
 
-
-## Multiple Linear Regrssion Model # 1
+### Multiple Linear Regrssion Model # 2
 One drawback to traditional multiple linear regression models is that the 
 forecasted counts are not integers. We will deal with this by rounding the
 predictions to the nearest whole number. 
@@ -639,12 +848,10 @@ predictions to the nearest whole number.
 We will start with a simple linear model to serve as a baseline. This includes
 all variables in the dataset. 
 
-```{r m1MLTrainBase}
-
-m1MLBase <- lm(TARGET ~ ., data = m2train)
-knitr::kable(summary(m1MLBase)$coefficients, digits = 3L,
-             caption = 'Multiple Regression Model 1 - Base Linear Regression Output')
-
+```{r m2MLTrainBase}
+m2MLBase <- lm(TARGET ~ ., data = m3train)
+knitr::kable(summary(m2MLBase)$coefficients, digits = 3L,
+             caption = 'Multiple Regression Model #2 - Base Output')
 ```
 Most of the variables in the dataset are significant, but we can immediately
 see a few that are above the 0.05 p-value threshold. 
@@ -653,13 +860,13 @@ see a few that are above the 0.05 p-value threshold.
 Backwards stepwise regression is performed and the result is a model with the 
 following variables *removed*: `FixedAcidity`, `CitricAcid`, `ResidualSugar`, 
 and `Density`. 
-```{r m1MLTrain}
 
-m1MLFit <- lm(TARGET ~ VolatileAcidity + Chlorides + FreeSulfurDioxide + TotalSulfurDioxide + pH +
-             Sulphates + Alcohol + LabelAppeal + AcidIndex + STARS, data = m2train)
-knitr::kable(summary(m1MLFit)$coefficients, digits = 3L,
-             caption = 'Multiple Regression Model 1 - Final Linear Regression Output')
-
+```{r m2MLTrain}
+m2MLFit <- lm(TARGET ~ VolatileAcidity + Chlorides + FreeSulfurDioxide 
+              + TotalSulfurDioxide + pH + Sulphates + Alcohol + LabelAppeal 
+              + AcidIndex + STARS, data = m3train)
+knitr::kable(summary(m2MLFit)$coefficients, digits = 3L,
+             caption = 'Multiple Regression Model #2 - Final Output')
 ```
 
 #### Coefficient Discussion
@@ -678,9 +885,6 @@ This means that the more alcohol a wine has, the more cases of it will be
 purchased. 
 * Acid Index, Sulphates, pH, Chlorides, and VolatileAcidity all have a
 negative impact on the number of cases sold. 
-
-
-## Multiple Linear Regrssion Model # 2
 
 # SELECT MODELS
 ## Model Selection Criteria
@@ -724,19 +928,47 @@ compTable[1, 3] <- m1PMAE <- MAE(m1PtstPred, m1tstImp$TARGET)
 compTable[1, 4] <- m1PFitAIC
 ```
 
-**Poisson Model 1** has an RMSE of `r prettyNum(m1PRMSE, digits = 2L)`, an MAE
-of `r prettyNum(m1PMAE, digits = 2L)`, and a training AIC of
+**Poisson Model 1** has an RMSE of 
+`r prettyNum(m1PRMSE, digits = 2L)`, an MAE of 
+`r prettyNum(m1PMAE, digits = 2L)`, and a training AIC of
 `r prettyNum(m1PFitAIC, digits = 2L)`.
 
 ### Poisson Model 2
 
+```{r m2TestProcess}
+set.seed(525)
+m2test <- copy(tstSet[,-1])
+m2test[,c(2:8,11:12)] <- abs(m2test[,c(2:8,11:12)])
+m2test$STARS[is.na(m2test$STARS)] <- 0
+m2test.impute <- mice(m2test, method = 'pmm', print = FALSE)
+m2test <- complete(m2test.impute)
+m2test.r <- m2test$TARGET
+m2test.p <- m2test[,-1]
+pre.process <- preProcess(m2test.p, method = c("YeoJohnson"))
+m2test.p <- predict(pre.process, m2test.p)
+m2test[,c(2:13,15)] <- m2test.p[,c(1:12,14)]
+```
+```{r m2PTest}
+# ZIP2: Test Model
+m2PtstPred = round(predict(m2.fpmodel, newdata = m2test))
+compTable[2, 2] <- m2PRMSE <- RMSE(m2PtstPred, m2test.r)
+compTable[2, 3] <- m2PMAE <- MAE(m2PtstPred, m2test.r)
+compTable[2, 4] <- m2.poisson.aic
+```
+
+**Poisson Model 2** has an RMSE of 
+`r prettyNum(m2PRMSE, digits = 2L)`, an MAE of 
+`r prettyNum(m2PMAE, digits = 2L)`, and a training AIC of 
+`r prettyNum(m2.poisson.aic, digits = 2L)`.
+
 ### Negative Binomial Model 1
+
 ```{r m1NBTest}
 # NB1: Test Model
 m1NBtstPred <- round(predict(m1NBFit, newdata = m1tstImp))
 compTable[3, 2] <- m1NBRMSE <- RMSE(m1NBtstPred, m1tstImp$TARGET)
 compTable[3, 3] <- m1NBMAE <- MAE(m1NBtstPred, m1tstImp$TARGET)
-compTable[3, 4] <- m1NBFitAIC
+compTable[3, 4] <- m1NBFitAIC 
 ```
 
 **Negative Binomial Model 1** has an RMSE of
@@ -748,9 +980,9 @@ compTable[3, 4] <- m1NBFitAIC
 
 ```{r m2NBTest}
 # NB2: Test Model
-m2NBtstPred <- round(predict(m2NBFit, newdata = m2test))
-compTable[4, 2] <- m2NBRMSE <- RMSE(m2NBtstPred, m2test$TARGET)
-compTable[4, 3] <- m2NBMAE <- MAE(m2NBtstPred, m2test$TARGET)
+m2NBtstPred <- round(predict(m2NBFit, newdata = m3test))
+compTable[4, 2] <- m2NBRMSE <- RMSE(m2NBtstPred, m3test$TARGET)
+compTable[4, 3] <- m2NBMAE <- MAE(m2NBtstPred, m3test$TARGET)
 compTable[4, 4] <- m2NBFitAIC <- AIC(m2NBFit)
 ```
 
@@ -760,22 +992,34 @@ compTable[4, 4] <- m2NBFitAIC <- AIC(m2NBFit)
 `r prettyNum(m2NBFitAIC, digits = 2L)`.
 
 ### Multiple Linear Regression Model 1
-```{r m1MLTest}
-# ML1: Test Model
-m1MLtstPred <- round(predict(m1MLFit, newdata = m2test))
-compTable[5, 2] <- m1MLMSE <- RMSE(m1MLtstPred, m2test$TARGET)
-compTable[5, 3] <- m1MLMAE <- MAE(m1MLtstPred, m2test$TARGET)
-compTable[5, 4] <- m1MLFitAIC <- AIC(m1MLFit)
 
+```{r m1MLRTest}
+# MLR1: Test Model
+m1MLRtstPred <- round(predict(m1MLRFit, newdata = m2test))
+compTable[5, 2] <- m1MLRRMSE <- RMSE(m1MLRtstPred, m2test.r)
+compTable[5, 3] <- m1MLRMAE <- MAE(m1MLRtstPred, m2test.r)
+compTable[5, 4] <- m1MLRFitAIC <- AIC(m1MLRFit)
+```
+
+**Multiple Linear Regression Model 2** has an RMSE of
+`r prettyNum(m1MLRRMSE, digits = 2L)`, an MAE of
+`r prettyNum(m1MLRMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m1MLRFitAIC, digits = 2L)`.
+
+### Multiple Linear Regression Model 2
+
+```{r m2MLTest}
+# MLR2: Test Model
+m2MLtstPred <- round(predict(m2MLFit, newdata = m3test))
+compTable[6, 2] <- m2MLMSE <- RMSE(m2MLtstPred, m3test$TARGET)
+compTable[6, 3] <- m2MLMAE <- MAE(m2MLtstPred, m3test$TARGET)
+compTable[6, 4] <- m2MLFitAIC <- AIC(m2MLFit)
 ```
 
 **Multiple Linear Regression Model 1** has an RMSE of
-`r prettyNum(m1MLMSE, digits = 2L)`, an MAE of
-`r prettyNum(m1MLMAE, digits = 2L)`, and a training AIC of
-`r prettyNum(m1MLFitAIC, digits = 2L)`.
-
-
-### Multiple Linear Regression Model 2
+`r prettyNum(m2MLMSE, digits = 2L)`, an MAE of
+`r prettyNum(m2MLMAE, digits = 2L)`, and a training AIC of
+`r prettyNum(m2MLFitAIC, digits = 2L)`.
 
 ## Comparsion
 
@@ -825,7 +1069,9 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1postImputeH}
 ```
-```{r model2impute}
+```{r m2clean}
+```
+```{r model3impute}
 ```
 <!-- Build Models -->
 ```{r m1PTrain}
@@ -844,15 +1090,24 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1PNB}
 ```
+```{r m2poisson}
+```
+```{r m2PTable}
+```
+```{r m2PFitCheck}
+```
+```{r m1MLRFit}
+```
+```{r m1MLRTable}
+```
 ```{r m2NBTrainBase}
 ```
 ```{r m2NBTrain}
 ```
-```{r m1MLTrainBase}
+```{r m2MLTrainBase}
 ```
-```{r m1MLTrain}
+```{r m2MLTrain}
 ```
-<!-- Other prep and build goes here -->
 <!-- Select Models -->
 ```{r compTable}
 ```
@@ -860,13 +1115,18 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m1PTest}
 ```
-<!-- Poisson 2 Test goes here -->
+```{r m2TestProcess}
+```
+```{r m2PTest}
+```
 ```{r m1NBTest}
 ```
 ```{r m2NBTest}
 ```
-```{r m1MLTest}
+```{r m1MLRTest}
 ```
-<!-- ML 2 Test goes here -->
+```{r m2MLTest}
+```
+<!-- Remaining Test sets go here -->
 ```{r modelTestResults}
 ```
