@@ -96,15 +96,20 @@ The structure of the paper is based on the flow of the research:
 
 * Introduction
 * Data 
-  * The data sets have an expected heteroscedasticity.  To work around this, we structured the data using the XXXXX method.  
-  * After preparing the data, we created randomized subsets of the datasets in a train/test structure for use in the models.
-  * Distribution and Correlation plots are used to further the model selection process
+  * The data sets have an expected heteroscedasticity.  To work around this, 
+    we structured the data using the XXXXX method.  
+  * After preparing the data, we created randomized subsets of the datasets in 
+    a train/test structure for use in the models.
+  * Distribution and Correlation plots are used to further the model selection 
+    process
 * Models
-  * We generated X models using methods such as XXXXXX in order to find and chose the most appropriate and accurate model. 
+  * We generated X models using methods such as XXXXXX in order to find and 
+    chose the most appropriate and accurate model. 
 * Results
   * We discuss the performance and prediction accuracy of the model
 * Summary and Conclusions
-  * Quick recap of the findings, identify areas of further research and shortcomings found during the research.
+  * Quick recap of the findings, identify areas of further research and shortcomings 
+    found during the research.
 * References
 * Code Appendix
   * All R code used in the research
@@ -302,21 +307,7 @@ corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 
 ```
 
-
-```{r summary_us}
-summaryus <- us_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
-describe(summaryus)
-
-ggpairs(
-  summaryus,
-  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
-  )
-us_corr <- cor(summaryus)
-corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
-
-```
-
-```{r summary_us}
+```{r summary_gb}
 summarygb <- gb_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summarygb)
 
@@ -342,6 +333,21 @@ fr_corr <- cor(summaryfr)
 corrplot(fr_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
 ```
 
+
+```{r summary_us}
+summaryus <- us_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
+describe(summaryus)
+
+ggpairs(
+  summaryus,
+  lower = list(continuous = ggally_points, combo = ggally_dot_no_facet)
+  )
+us_corr <- cor(summaryus)
+corrplot(us_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ellipse", bg="black")
+
+```
+
+
 ```{r summary_global}
 summarygl <- full_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summarygl)
@@ -364,7 +370,7 @@ There is definite heteroskedasticity across all data points, we will need to add
 –Describe the analysis plan
 •Describe the scope and limitations of the methodology
 
-```{r}
+```{r ca_train_split}
 #potential train/test split
 ca_set_model <- ca_set %>%
   select(-title, -tags, -channel_title, -trending_date, -publish_time, -video_id, -thumbnail_link, -description, -country)
@@ -422,3 +428,35 @@ They are reproduced in the appendix for review and comment.
 knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 
+```{r libraries}
+```
+```{r load_data}
+```
+```{r ca_data_prep}
+```
+```{r de_data_prep}
+```
+```{r fr_data_prep}
+```
+```{r gb_data_prep}
+```
+```{r us_data_prep}
+```
+```{r merge_datasets}
+```
+```{r global_target}
+```
+```{r summary_ca}
+```
+```{r summary_de}
+```
+```{r summary_gb}
+```
+```{r summary_fr}
+```
+```{r summary_us}
+```
+```{r summary_global}
+```
+```{r ca_train_split}
+```
