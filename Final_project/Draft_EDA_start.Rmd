@@ -28,6 +28,9 @@ library(summarytools)
 library(readr)
 library(knitr)
 library(GGally)
+
+
+set.seed(951)
 ```
 
 ```{r load_data}
@@ -107,9 +110,7 @@ The structure of the paper is based on the flow of the research:
   * All R code used in the research
 
 # Data
-•Description of Data
-–A complete description of the desired output
-
+  
 ## Data Description
 
 The datasets in total have 186,922 unique values across the 5 countries used. They 
@@ -134,22 +135,51 @@ country_code | code created to identify country of origin
 view_target | Above (1) or below  (0) the mean views from country of origin
 view_global_target | Above (1) or below  (0) the mean views globally
 tag_count | number of metadata tags applied to each video
- 
-
+   
 ## DATA PREPARATION
 
-~discuss using Excel for data cleaning for unique values in France.
+The owner of the dataset seemed to combine the five countries in question into the 
+France dataset. Unfortunately, when this operation occurred, the owner left no marker 
+in the dataset to identify which country the data came from originally.  As we are 
+going to use the country as predictor, we needed to find a method to remove the unwanted 
+values.  
+  
+Using Excel, we performed a simple VLOOKUP on the video ID from the France dataset to 
+the other four datasets.  If the Video ID was in another dataset, we flagged and removed 
+it.  The resulting shortened dataset matched in item count to the other datasets.  As 
+the datasets are static and we do not plan to have then constantly updated with fresh 
+data, using the quickest simplest method is appropriate.  
+  
+As each dataset is over 30,000 individual objects, incomplete cases were dropped completely. 
+Out of the 40,881 objects in the raw Canada dataset, removing the incomplete cases only 
+removed 1,296 (roughly 3.2%).  France had the highest number removed for incomplete cases 
+at 8.1% and US being the lowest at 1.4%.  France being the highest is understandable due 
+to the prior state of the dataset discussed earlier.  
+
+Summary statistic markers were calculated for each dataset and for the environment as a 
+whole.  
+  
+  * A country code (1-5) was applied to each dataset.  
+  * Target values of view_target and view_target_global were created 
+    * A value of '1' designates the view count is above the mean of the country 
+      and global respectively. 
+    * A value of '0' designates the view count falls below the mean respectively 
+  * 'tag_count', A predictor value, was calculated by counting the number of tags applied 
+    to each video entry.
 
 ```{r ca_data_prep}
+# remove incomplete cases
 ca_set <- ca_set %>% filter(complete.cases(ca_set))
 
+#Calculating the mean of the CA dataset
 ca_mean <- mean(ca_set$views)
 
+
 ca_set <- ca_set%>%
-  mutate(country = 'CA')%>%
-  mutate(country_code = 1)%>%
-  mutate(view_target = ifelse(views > ca_mean,1,0))%>%
-  mutate(tag_count = 1+(str_count(ca_set$tags, ';')))
+  mutate(country = 'CA')%>% #Add country label
+  mutate(country_code = 1)%>% #Add country code
+  mutate(view_target = ifelse(views > ca_mean,1,0))%>% #calculate above/below view mean
+  mutate(tag_count = 1+(str_count(ca_set$tags, ';'))) #count number of tags
 ```
 
 ```{r de_data_prep}
@@ -205,21 +235,26 @@ us_set <- us_set%>%
 ```
 
 ```{r merge_datasets}
+# Prep column names for joins
 mergeCols = c('video_id','trending_date','title','channel_title','category_id','publish_time','tags','views','likes','dislikes','comment_count','thumbnail_link','comments_disabled','ratings_disabled','video_error_or_removed','description','country','country_code', 'view_target','tag_count')
 
+# Join the datasets into a single dataset
 full_set <- ca_set %>% full_join(de_set, by=mergeCols)
 full_set <- full_set %>% 
   full_join(fr_set, by=mergeCols)%>%
   full_join(gb_set, by=mergeCols)%>%
   full_join(us_set, by=mergeCols)
 
+# Calculate Global mean
 full_mean <- mean(full_set$views)
 
+#calculate above/below global mean
 full_set <- full_set %>%
   mutate(view_global_target = ifelse(views > full_mean,1,0))
 ```
 
 ```{r global_target}
+# add global mean calculation to individual datasets
 ca_set <- ca_set %>%
   mutate(view_global_target = ifelse(views > full_mean,1,0))
 
@@ -328,19 +363,38 @@ There is definite heteroskedasticity across all data points, we will need to add
 –Describe the instrumentation
 –Describe the analysis plan
 •Describe the scope and limitations of the methodology
+
+```{r}
+#potential train/test split
+ca_set_model <- ca_set %>%
+  select(-title, -tags, -channel_title, -trending_date, -publish_time, -video_id, -thumbnail_link, -description, -country)
+
+
+ca_smp_size <- floor(0.75*nrow(ca_set))
+ca_ind <- sample(seq_len(nrow(ca_set)), size = ca_smp_size)
+
+ca_train <- ca_set[ca_ind,]
+ca_test <- ca_set[-ca_ind,]
+```
+
 ## Model Creation
+• describe which model are created and why
 
 ## Model Selection
 
 ### Criteria
+• criteria of the model selection
+
 ### Performance
+• describe the performance of the selection
 
 ### Predictions
+• describe the prediction values 
 
 # Results
-– Needs to systematically and clearly articulate the study findings. If the results are unclear, the reviewer must decide whether the analysis of the data was poorly executed or whether the Results section is poorly organized.
+•Needs to systematically and clearly articulate the study findings. If the results are unclear, the reviewer must decide whether the analysis of the data was poorly executed or whether the Results section is poorly organized.
 
-– Should state wheather the hypothesis were verified or proven untrue or, if no hypotheses were given, weather the research questions were answered.
+• Should state wheather the hypothesis were verified or proven untrue or, if no hypotheses were given, weather the research questions were answered.
 The authors should also comment on their results in light of previous studies and explain what differences (if any) exist between the findings and those reported by others and attempt to provide an explaination of the differnces.  
 
 # Summary and Conclusions
