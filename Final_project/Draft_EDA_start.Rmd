@@ -1,11 +1,13 @@
 ---
 title: "DATA 621 - Business Analytics and Data Mining"
-subtitle: 'Fall 2020 - Group 2 - Homework #3'
-author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
-    Bryan Persaud, Jeff Shamp
-date: "10/28/2020"
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg, 
+  Bryan Persaud, Jeff Shamp
+date: "12/14/2020"
 output:
+  html_document:
+    df_print: paged
   pdf_document: default
+subtitle: 'Fall 2020 - Group 2 - Final Project'
 urlcolor: purple
 ---
 
@@ -29,11 +31,10 @@ library(readr)
 library(knitr)
 library(GGally)
 
-
 set.seed(951)
 ```
 
-```{r load_data}
+```{r load_data, message=FALSE}
 ca_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/CAvideos.csv"
 ca_set <- read_csv(file = ca_path)
 us_path = "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/USvideos.csv"
@@ -280,7 +281,7 @@ us_set <- us_set %>%
 ## Data Distribution and Correlation
 Canada data
 
-```{r summary_ca}
+```{r summary_ca, message=FALSE}
 summaryca <- ca_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
 describe(summaryca)
 
@@ -296,7 +297,7 @@ corrplot(ca_corr, order = "hclust", tl.col = "black", tl.srt = 45, method = "ell
 
 ```{r summary_de}
 summaryde <- de_set%>% select(views, category_id,likes, dislikes, comment_count, comments_disabled, ratings_disabled, view_target, view_global_target, tag_count)
-describe(summaryus)
+describe(summaryde)
 
 ggpairs(
   summaryde,
@@ -372,15 +373,12 @@ There is definite heteroskedasticity across all data points, we will need to add
 
 ```{r ca_train_split}
 #potential train/test split
-ca_set_model <- ca_set %>%
-  select(-title, -tags, -channel_title, -trending_date, -publish_time, -video_id, -thumbnail_link, -description, -country)
 
+ca_smp_size <- floor(0.75*nrow(summaryca))
+ca_ind <- sample(seq_len(nrow(summaryca)), size = ca_smp_size)
 
-ca_smp_size <- floor(0.75*nrow(ca_set))
-ca_ind <- sample(seq_len(nrow(ca_set)), size = ca_smp_size)
-
-ca_train <- ca_set[ca_ind,]
-ca_test <- ca_set[-ca_ind,]
+ca_train <- summaryca[ca_ind,]
+ca_test <- summaryca[-ca_ind,]
 ```
 
 ## Model Creation
