@@ -615,33 +615,47 @@ kable(m1PNBC, digits = 3L,
 ```
 
 ## Poisson Model #2 & Multiple Linear Regrssion Model #1
-The `TARGET` variable has 2734 observations with zero values. This could be a result 
-of the manufacturer not releasing the wine into the market, or that there were no 
-orders placed. Therefore, backward stepwise variable elimination for a zero-inflated 
-poisson (ZIP) analysis will be investigated to understand the conditions. This model is
-further compared to the same Poisson model to determine whether there is an improvement.
+The `TARGET` variable has 2734 observations with zero values. This could be a
+result of the manufacturer not releasing the wine into the market, or that there
+were no orders placed. Therefore, backward stepwise variable elimination for a
+zero-inflated poisson (ZIP) analysis will be investigated to understand the
+conditions. This model is further compared to the same Poisson model to
+determine whether there is an improvement.
 
-In the ZIP model, the independent variable, $TARGET_i$, take zero values $TARGET_i \sim 0$ 
-with the probability $\omega_i$ or values from Poisson distribution 
-$TARGET_i \sim Pois(\lambda_i)$ with probability (1 - $\omega_i$). For $i = 1,..., n$, 
-it can be written as:
+In the ZIP model, the independent variable, \(TARGET_i\), take zero values
+\(TARGET_i \sim 0\) with the probability \(\omega_i\) or values from Poisson
+distribution \(TARGET_i \sim \mathrm{Pois}(\lambda_i)\) with probability
+\((1 - \omega_i)\). For \(i = 1,\ldots, n\), it can be written as:
 
-\[P(Y_i = y_i) = \left\{\begin{matrix}\omega _i + (1-\omega_i)e^{-\lambda_i}), \text{ if } y_i = 0\\ (1-\omega_i)\frac{e^{-\lambda_i}\lambda_i^{y_i}}{y_i!},\text{ if } y_i > 0 \end{matrix}\right.\]
+\[
+P(Y_i = y_i) = 
+\begin{cases}
+\omega_i + (1-\omega_i)e^{-\lambda_i})&\text{ if } y_i = 0\\
+(1-\omega_i)\frac{e^{-\lambda_i}\lambda_i^{y_i}}{y_i!}&\text{ if } y_i > 0
+\end{cases}
+\]
 
-Therefore, the zero-inflated poisson model have two parameters, $\lambda_i$ and 
-$\omega_i$, and linked with the predictor variables with the following:
+Therefore, the zero-inflated poisson model have two parameters, \(\lambda_i\)
+and \(\omega_i\), and linked with the predictor variables with the following:
 
-\[log\left(\frac{\omega_i}{1-\omega_i}\right) = \sum_{j=1}^{t}\gamma_{ji}Z_{ji},\]
+\[
+\begin{align}
+&\log\left(\frac{\omega_i}{1-\omega_i}\right) = \sum_{j=1}^{t}\gamma_{ji}Z_{ji}\\
+&\log\left(\lambda_i\right) = \sum_{j=1}^{k}\beta_{ji}X_{ji}
+\end{align}
+\]
 
-\[log\left(\lambda_i\right) = \sum_{j=1}^{k}\beta_{ji}X_{ji},\]
+where \(Z_1,\ldots, Z_l\) are the dependent variables for the first equation and 
+\(X_1,\ldots, X_k\) for the second one. The expected value and variance of the
+number of cases purchased for the \(i^{\textrm{th}}\) wine in the ZIP model are
+respectively:
 
-where $Z_1,..., Z_l$ are the dependent variables for the first equation and 
-$X_1,..., X_k$ for the second one. The expected value and variance of the number 
-of cases purchased for the $i^{th}$ wine in the ZIP model are, respectively:
-
-\[E(Y_i) = \lambda_i(1 - \omega_i),\]
-
-\[Var(Y_i) = (1 - \omega_i)(\lambda_i - \omega_i\lambda_i^2).\]
+\[
+\begin{align}
+\mathrm{E}(Y_i) &= \lambda_i(1 - \omega_i)\\
+\mathrm{Var}(Y_i) &= (1 - \omega_i)(\lambda_i - \omega_i\lambda_i^2)
+\end{align}
+\]
 
 Similar to Poisson regression, the ZIP model assumes that the average number of 
 cases purchased equals the variance. For more information, refer to 
