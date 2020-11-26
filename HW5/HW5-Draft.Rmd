@@ -8,6 +8,9 @@ output:
   pdf_document:
     toc: TRUE
     toc_depth: 4
+    extra_dependencies:
+      amsmath: null
+      inputenc: utf8
 urlcolor: purple
 ---
 ```{r setup, include=FALSE}
@@ -322,7 +325,7 @@ for a zero-inflated version of the counting distributions.
 The right balance of the chemical properties of the wine is essential to make it
 taste, look, and smell delightful, in addition to having a long shelf-life.
 Typically, citric acid and alcohol are the main positive attributes a wine
-should have, while volatile acidity and sulphates are the main negative ones. 
+should have, while volatile acidity and sulfates are the main negative ones. 
 However, the dataset has negative values instead of near-zero in some of these 
 variables describing the chemical properties of the wine. Because little
 information is given whether or not these variables were normalized, absolute
@@ -605,6 +608,7 @@ for the Poisson model, but its AIC is higher. Based on AIC only, the Poisson
 model's parsimony beats out the negative binomial's explanatory powers.
 
 ```{r m1PNB}
+# P1 & NB1: GoF Comparison
 m1PNBC <- data.table(Model = c("Poisson 1", "Negative Binomial 1"),
                      Deviance = c(m1PFit$finalModel$deviance,
                                   m1NBFit$deviance),
@@ -614,11 +618,11 @@ kable(m1PNBC, digits = 3L,
       caption = "Poisson 1 and NegBinom 1 Goodness-of-Fit Comparison")
 ```
 
-## Poisson Model #2 & Multiple Linear Regrssion Model #1
+## Poisson Model #2 & Multiple Linear Regression Model #1
 The `TARGET` variable has 2734 observations with zero values. This could be a
 result of the manufacturer not releasing the wine into the market, or that there
 were no orders placed. Therefore, backward stepwise variable elimination for a
-zero-inflated poisson (ZIP) analysis will be investigated to understand the
+zero-inflated Poisson (ZIP) analysis will be investigated to understand the
 conditions. This model is further compared to the same Poisson model to
 determine whether there is an improvement.
 
@@ -635,14 +639,14 @@ P(Y_i = y_i) =
 \end{cases}
 \]
 
-Therefore, the zero-inflated poisson model have two parameters, \(\lambda_i\)
+Therefore, the zero-inflated Poisson model have two parameters, \(\lambda_i\)
 and \(\omega_i\), and linked with the predictor variables with the following:
 
 \[
-\begin{align}
+\begin{aligned}
 &\log\left(\frac{\omega_i}{1-\omega_i}\right) = \sum_{j=1}^{t}\gamma_{ji}Z_{ji}\\
 &\log\left(\lambda_i\right) = \sum_{j=1}^{k}\beta_{ji}X_{ji}
-\end{align}
+\end{aligned}
 \]
 
 where \(Z_1,\ldots, Z_l\) are the dependent variables for the first equation and 
@@ -651,10 +655,10 @@ number of cases purchased for the \(i^{\textrm{th}}\) wine in the ZIP model are
 respectively:
 
 \[
-\begin{align}
+\begin{aligned}
 \mathrm{E}(Y_i) &= \lambda_i(1 - \omega_i)\\
 \mathrm{Var}(Y_i) &= (1 - \omega_i)(\lambda_i - \omega_i\lambda_i^2)
-\end{align}
+\end{aligned}
 \]
 
 Similar to Poisson regression, the ZIP model assumes that the average number of 
@@ -686,6 +690,7 @@ zeros: zeros may come from both the point mass and from the count component.
 
 \small
 ```{r m2PTable}
+# P2: Outputs
 kable(summary(m2.fpmodel)$coefficients$count,
       caption = "Zero Inflated Poisson Model #2 Count Output")
 kable(summary(m2.fpmodel)$coefficients$zero,
@@ -718,47 +723,46 @@ that ignore under-dispersion will be overly conservative and may fail to detect
 significant patterns. Generalized Poisson (GP) and Conway‐Maxwell‐Poisson (CMP)
 distributions are better choices for such modeling because they can handle both 
 over-dispersion and under-dispersion. But for the scope of this assignment, 
-it's apparent, from the Vuong test with the same Poisson model and the ZIP model, 
-that the zero-inflated Poisson model is a slight improvement over the Poisson 
-model. Therefore, the ZIP model will still be considered among others.
+it's apparent, from the Vuong test with the same Poisson model and the ZIP
+model, that the zero-inflated Poisson model is a slight improvement over the
+Poisson model. Therefore, the ZIP model will still be considered among others.
 
 #### Coefficient Discussion
 All of the predictors in both the count and inflation portions of the model are 
-statistically significant. This model fits the data significantly better than the 
-null model, i.e., the intercept-only model. The count model contains information 
-about variables that the parent Poisson model used to estimate `TARGET` on the 
-condition that `TARGET` > 0. The coefficients for all 4 regression variables are 
-statistically significant at a 99% confidence level. The coefficient for `AcidIndex`
-is negative, meaning that as the total acidity of wine goes up by a unit, the number 
-of purchased cases goes down by 2%. One the other hand, for the other variables, i.e. 
-`Alcohol`, `LabelAppeal` and `STARS`, as these increase, the number of purchased 
-cases will also increase. In particular, `LabelAppeal` can account for a 26% 
-increase in the number of wine cases sold if the visual appeal of the wine 
-scores increase by one unit and all other variables held constant. Whereas, there
-is a 19% increase in cases sold for each increase in the wine rating by a team of 
-experts, `STARS`.
+statistically significant. This model fits the data significantly better than
+the null model, i.e., the intercept-only model. The count model contains
+information about variables that the parent Poisson model used to estimate
+`TARGET` on the condition that `TARGET` > 0. The coefficients for all 4
+regression variables are statistically significant at a 99% confidence level.
+The coefficient for `AcidIndex` is negative, meaning that as the total acidity
+of wine goes up by a unit, the number of purchased cases goes down by 2%. One
+the other hand, for the other variables, i.e. `Alcohol`, `LabelAppeal` and
+`STARS`, as these increase, the number of purchased cases will also increase. In
+particular, `LabelAppeal` can account for a 26% increase in the number of wine
+cases sold if the visual appeal of the wine scores increase by one unit and all
+other variables held constant. Whereas, there is a 19% increase in cases sold
+for each increase in the wine rating by a team of experts, `STARS`.
 
 The zero model contains information about variables that the nested Logistic 
-Regression model has been used to estimate the probability of whether or not cases are
-purchased. Examining the variables with a negative regression coefficient, this
-suggests that as the factor for the specific chemical properties increases, the
-probability of no case being purchase decreases. This is in line with our intuition,
-particularly for the sulfur dioxide levels. When a wine has an unusually small 
-percentage of the Free and Total $SO_2$, this suggests the wine is chemically and/or 
-microbially unstable. Thus, if a wine manufacturer were to increase the sulfur 
-dioxide levels by one unit, the odds that the wine would certainly not be purchased 
-would decrease by a factor of 0.92 to 0.95. However, `LabelAppeal` is among the
-positive coefficients for the zero model. This is interpreted as the higher a 
-rating is for a bottle of wine, the more likely there will be no case purchase, and it
-doesn't seem reasonable.
+Regression model has been used to estimate the probability of whether or not
+cases are purchased. Examining the variables with a negative regression
+coefficient, this suggests that as the factor for the specific chemical
+properties increases, the probability of no case being purchase decreases. This
+is in line with our intuition, particularly for the sulfur dioxide levels. When
+a wine has an unusually small percentage of the Free and Total \(SO_2\), this
+suggests the wine is chemically and/or microbially unstable. Thus, if a wine
+manufacturer were to increase the sulfur dioxide levels by one unit, the odds
+that the wine would certainly not be purchased would decrease by a factor of
+0.92 to 0.95. However, `LabelAppeal` is among the positive coefficients for the
+zero model. This is interpreted as the higher a rating is for a bottle of wine,
+the more likely there will be no case purchase, and it doesn't seem reasonable.
 
 ### Multiple Linear Regrssion Model #1
-
-Multiple Linear Regression Model #1 will be using the step function has an options 
-to use a process that both adds and removes variables in the model. It uses AIC 
-(Akaike information criterion) as a selection criterion. A full model and a null 
-are defined, and then the function will follow a procedure to find the model with 
-the lowest AIC. 
+Multiple Linear Regression Model #1 will be using the step function has an
+option to use a process that both adds and removes variables in the model. It
+uses AIC (Akaike information criterion) as a selection criterion. A full model
+and a null are defined, and then the function will follow a procedure to find
+the model with the lowest AIC. 
 
 ```{r m1MLRFit}
 # Multiple Linear Regression model 
@@ -781,6 +785,7 @@ m1MLRFit = lm(TARGET ~ STARS + LabelAppeal + AcidIndex + TotalSulfurDioxide +
 
 \small
 ```{r m1MLRTable}
+# ML1: Outputs
 kable(summary(m1MLRFit)$coefficient,
       caption = "Multiple Linear Regression Model #1 Output")
 ```
@@ -795,36 +800,37 @@ tends to decrease.
 
 The intercept itself suggests that with no other information about the wine,
 there will be cases sold. The other positive predictors suggest that increasing
-`STARS` and `LabelAppeal` will result in an increase in the number of case purchased. 
-These make sense intuitively. Moreover, as discussed in the Poisson Model #2, the 
-right balance of $SO_2$ lead to better wine, thus the coefficients are rather
-small and have a smaller effect when it is increased. This reasoning is similar 
-for `Alcohol` levels. Next, `CitricAcid`, commonly used as an acid supplement 
-during fermentation, helps winemakers boost the acidity of their wine and 
-stabilize ferric haze. So, it makes sense that the higher `CitricAcid` is, the
-more cases would be sold. But once again, these need to be balance right.
+`STARS` and `LabelAppeal` will result in an increase in the number of case
+purchased. These make sense intuitively. Moreover, as discussed in the Poisson
+Model #2, the right balance of $SO_2$ lead to better wine, thus the coefficients
+are rather small and have a smaller effect when it is increased. This reasoning
+is similar for `Alcohol` levels. Next, `CitricAcid`, commonly used as an acid
+supplement during fermentation, helps winemakers boost the acidity of their wine
+and stabilize ferric haze. So, it makes sense that the higher `CitricAcid` is,
+the more cases would be sold. But once again, these need to be balance right.
 
-On the contrary, an increase in a unit of volatile acidity results in the decrease
-of case purchases. Volatile acidity is caused by bacteria or certain yeasts. This also
-can increase the acid index and pH if it is high. This is why sulfur dioxide is used 
-to carefully control it. In all, this model should not be taken as fixed, when it 
-comes to chemical processes, the wine manufacturer needs to take care of what to
-increase and decrease in order to reach equilibrium.
+On the contrary, an increase in a unit of volatile acidity results in the
+decrease of case purchases. Volatile acidity is caused by bacteria or certain
+yeasts. This also can increase the acid index and pH if it is high. This is why
+sulfur dioxide is used to carefully control it. In all, this model should not be
+taken as fixed, when it comes to chemical processes, the wine manufacturer needs
+to take care of what to increase and decrease in order to reach equilibrium.
 
 ## Negative Binomial Model #2 & Multiple Linear Regrssion Model #2
-
 ### Negative Binomial Model #2
 #### Baseline Model 
 We will start with a simple negative binomial regression model to serve as a 
 baseline. This includes all variables in the dataset.
 
 ```{r m2NBTrainBase}
+# NB2: Baseline Model
 m2NBBase <- glm.nb(TARGET ~ ., data = m3train)
 knitr::kable(summary(m2NBBase)$coefficients, digits = 3L,
              caption = 'Negative Binomial Regression Model #2 - Base Output')
 ```
-Immediately, we can see a few variables that do not meet the 0.05
-p-value threshold. 
+
+Immediately, we can see a few variables that do not meet the 0.05 p-value
+threshold. 
 
 #### Enhanced Model
 Backwards stepwise regression is performed and the result is a model with the 
@@ -833,6 +839,7 @@ and `Density`. Because the `Sulphates` variable is very close to the 0.05
 p-value threshold of significance, we will remove it as well. 
 
 ```{r m2NBTrain}
+# NB2: Revised Model
 m2NBFit <- glm.nb(TARGET ~ VolatileAcidity + Chlorides +
                 FreeSulfurDioxide + TotalSulfurDioxide + pH + Alcohol + 
                 LabelAppeal + AcidIndex + STARS, data = m3train)
@@ -841,21 +848,20 @@ knitr::kable(summary(m2NBFit)$coefficients, digits = 3L,
 ```
 
 #### Coefficient Discussion
-The intercept of the final model tells us that there is typically ~1 case 
-of wine purchased. Some things to note: 
+The intercept of the final model tells us that there is typically ~1 case of
+wine purchased. Some things to note: 
 
-* Stars and label appeal contribute the most positively to the number of
-cases of wine purchased. Intuitively, this makes sense - the higher the
-rating and the prettier the bottle, the more cases we would expect to be
-sold. 
-* Free Sulfur Dioxide and Total Sulfur Dioxide have a very tiny effect on
-the number of cases sold (rounded to 3 decimal places, the impact is 0!)
-* All of the remaining variables except alcohol have a negative effect on 
-the number of cases purchased. 
+  * Stars and label appeal contribute the most positively to the number of cases
+  of wine purchased. Intuitively, this makes sense - the higher the rating and
+  the prettier the bottle, the more cases we would expect to be sold.
+  * Free Sulfur Dioxide and Total Sulfur Dioxide have a very tiny effect on the
+  number of cases sold (rounded to 3 decimal places, the impact is 0!)
+  * All of the remaining variables except alcohol have a negative effect on the
+  number of cases purchased. 
 
 ### Multiple Linear Regrssion Model # 2
 One drawback to traditional multiple linear regression models is that the 
-forecasted counts are not integers. We will deal with this by rounding the
+forecast counts are not integers. We will deal with this by rounding the
 predictions to the nearest whole number. 
 
 #### Baseline Model
@@ -863,12 +869,14 @@ We will start with a simple linear model to serve as a baseline. This includes
 all variables in the dataset. 
 
 ```{r m2MLTrainBase}
+# ML2: Baseline model
 m2MLBase <- lm(TARGET ~ ., data = m3train)
 knitr::kable(summary(m2MLBase)$coefficients, digits = 3L,
              caption = 'Multiple Regression Model #2 - Base Output')
 ```
-Most of the variables in the dataset are significant, but we can immediately
-see a few that are above the 0.05 p-value threshold. 
+
+Most of the variables in the dataset are significant, but we can immediately see
+a few that are above the 0.05 p-value threshold. 
 
 #### Enhanced Model
 Backwards stepwise regression is performed and the result is a model with the 
@@ -876,6 +884,7 @@ following variables *removed*: `FixedAcidity`, `CitricAcid`, `ResidualSugar`,
 and `Density`. 
 
 ```{r m2MLTrain}
+# ML2: Enhanced model
 m2MLFit <- lm(TARGET ~ VolatileAcidity + Chlorides + FreeSulfurDioxide 
               + TotalSulfurDioxide + pH + Sulphates + Alcohol + LabelAppeal 
               + AcidIndex + STARS, data = m3train)
@@ -884,21 +893,20 @@ knitr::kable(summary(m2MLFit)$coefficients, digits = 3L,
 ```
 
 #### Coefficient Discussion
-The intercept of the final model tells us that there are typically ~3 cases 
-of wine purchased. Some things to note: 
+The intercept of the final model tells us that there are typically ~3 cases of
+wine purchased. Some things to note: 
 
-* As expected, the number of stars has the largest, positive impact on the 
-number of cases sold. This makes sense -- the higher the rating of a wine,
-the more of it we would expect to be purchased. 
-* Label appeal has the second largest impact on the number of cases sold. 
-They say one shouldn't judge a book by its cover (or in this case, a wine
-by its label), but it does appear to have quite a significant impact on
-sales. 
-* Alcohol also has a small positive impact on the number of cases purchased. 
-This means that the more alcohol a wine has, the more cases of it will be
-purchased. 
-* Acid Index, Sulphates, pH, Chlorides, and VolatileAcidity all have a
-negative impact on the number of cases sold. 
+  * As expected, the number of stars has the largest, positive impact on the
+  number of cases sold. This makes sense -- the higher the rating of a wine, the
+  more of it we would expect to be purchased.
+  * Label appeal has the second largest impact on the number of cases sold. They
+  say one shouldn't judge a book by its cover (or in this case, a wine by its
+  label), but it does appear to have quite a significant impact on sales. 
+  * Alcohol also has a small positive impact on the number of cases purchased.
+  This means that the more alcohol a wine has, the more cases of it will be 
+  purchased. 
+  * Acid Index, Sulphates, pH, Chlorides, and VolatileAcidity all have a
+  negative impact on the number of cases sold. 
 
 # SELECT MODELS
 ## Model Selection Criteria
