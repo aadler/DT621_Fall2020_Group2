@@ -24,7 +24,6 @@ library(corrplot)
 library(mice)
 library(pscl)
 library(mpath)
-library(dplyr)
 library(data.table)
 
 # Set master seed
@@ -338,9 +337,10 @@ Afterward, the data is pre-processed to fulfill the assumption of normality
 using the Yeo-Johnson transformation (2000). This technique attempts to find the
 value of lambda that minimizes the Kullback-Leibler distance between the normal
 distribution and the transformed distribution. This method has the advantage of
-working without having to worry about the domain of x.
+working without having to worry about the domain of \(x\).
 
 ```{r m2clean}
+# P2 & ML 1: Clean and impute
 set.seed(525)
 m2train <- copy(trnSet[,-1])
 m2train[,c(2:8,11:12)] <- abs(m2train[,c(2:8,11:12)])
@@ -362,13 +362,13 @@ imputation involves creating multiple predictions for each missing value, helpin
 to account for the uncertainty in the individual imputations. 
 
 ```{r model3impute}
-set.seed(123)
 # ML2 & NB2 data transformation
 # MICE imputation on train and test set
-m3train <- complete(mice(data = trnSet %>% select(-INDEX),
+set.seed(123)
+m3train <- complete(mice(data = trnSet[, -c('INDEX')],
                          method = "pmm", print = FALSE), 3)
-m3test <- complete(mice(data = tstSet %>% select(-INDEX),
-                        method = "pmm", print = FALSE), 3)
+m3test <- complete(mice(data = tstSet[, -c('INDEX')],
+                         method = "pmm", print = FALSE), 3)
 ```
 
 # BUILD MODELS
