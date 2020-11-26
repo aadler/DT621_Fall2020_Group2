@@ -21,11 +21,11 @@ library(knitr)
 library(MASS)
 library(caret)
 library(corrplot)
-library(data.table)
 library(mice)
 library(pscl)
 library(mpath)
 library(dplyr)
+library(data.table)
 
 # Set master seed
 set.seed(65408)
@@ -150,7 +150,7 @@ A kernel-smoothed density plot of the distributions of the non-integer numeric
 predictors is below, followed by a histogram of the integral-valued predictors.
 
 ```{r graphsD, fig.height=5, fig.width=7}
-# Using epanechnikov kernel to generate kernel-smoothed densities
+# Using Epanechnikov kernel to generate kernel-smoothed densities
 ggplot(predictorDTM[!is.na(metric) & metric %chin% nmtrnDUB], aes(x = value)) +
   geom_density(kernel = 'epanechnikov') +
   facet_wrap( ~ metric, scales = 'free') +
@@ -318,27 +318,27 @@ stars. On the one hand, this could simply be noise (process variance) or
 parameter error (finite sample size). On the other, it could indicate the need
 for a zero-inflated version of the counting distributions.
 
-## Poisson Model #2 & Multiple Linear Regrssion Model #1
+## Poisson Model #2 & Multiple Linear Regression Model #1
 
-The right balance of the chemical properties of the wine is essential to make 
-it tastes, looks, and smells delightful, in addition to having a long shelf-life.
-Typically, citric acid and alcohol are the main positive attributes a wine 
+The right balance of the chemical properties of the wine is essential to make it
+taste, look, and smell delightful, in addition to having a long shelf-life.
+Typically, citric acid and alcohol are the main positive attributes a wine
 should have, while volatile acidity and sulphates are the main negative ones. 
 However, the dataset has negative values instead of near-zero in some of these 
-variables describing the chemical properties of the wine. Because little is given 
-about whether or not these variables were normalized, absolute values will be 
-taken assuming there was an error made during data collection. 
+variables describing the chemical properties of the wine. Because little
+information is given whether or not these variables were normalized, absolute
+values will be taken assuming there was an error made during data collection. 
 
 Lastly, to handle missing data for `STARS`, they will be replaced by 0, while 
 the chemical properties will be imputed. Because the predictive mean matching 
-imputation method combines the standard linear regression and the nearest-neighbor 
-imputation approach, Model Set #2 elected to fill in missing values of a 
-continuous variable by using it. Afterward, the data is pre-processed to fulfill 
-the assumption of normality using the Yeo-Johnson transformation 
-[(Yeo & Johnson, 2000)](https://www.jstor.org/stable/2673623?seq=1). This technique 
-attempts to find the value of lambda that minimizes the Kullback-Leibler distance 
-between the normal distribution and the transformed distribution. This method 
-has the advantage of working without having to worry about the domain of x.
+imputation method combines the standard linear regression and the
+nearest-neighbor imputation approach, Model Set #2 elected to fill in the
+missing values of a continuous variable by using mean-matching imputation.
+Afterward, the data is pre-processed to fulfill the assumption of normality
+using the Yeo-Johnson transformation (2000). This technique attempts to find the
+value of lambda that minimizes the Kullback-Leibler distance between the normal
+distribution and the transformed distribution. This method has the advantage of
+working without having to worry about the domain of x.
 
 ```{r m2clean}
 set.seed(525)
@@ -1037,6 +1037,10 @@ kable(compTable, digits = 3L,
 
   * Kuhn, M. (2019, March 27). *The `caret` Package*.
   https://topepo.github.io/caret/pre-processing.html#imputation
+  * Yeo, I., & Johnson, R. (2000). A New Family of Power Transformations to
+  Improve Normality or Symmetry. **Biometrika**, 87(4), 954--959.
+  Retrieved November 26, 2020, from http://www.jstor.org/stable/2673623
+  
 
 # CODE APPENDIX
 ```{r setup2, include=FALSE}
