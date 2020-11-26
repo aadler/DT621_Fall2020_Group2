@@ -1052,6 +1052,8 @@ kable(compTable, digits = 3L,
 ```
 
 ## Selection
+The zero-inflated **Poisson Model 2** performed best on all the metrics and will
+be used to create the prediction on the evaluation set.
 
 # PREDICTION
 
@@ -1153,6 +1155,5 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r m2MLTest}
 ```
-<!-- Remaining Test sets go here -->
 ```{r modelTestResults}
 ```
