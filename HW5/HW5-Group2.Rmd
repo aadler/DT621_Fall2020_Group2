@@ -1060,7 +1060,7 @@ be used to create the prediction on the evaluation set.
 ```{r readEval}
 # Read evaluation but not "IN" since that's dropped right away
 m2eval <- fread(paste0(urlRemote, pathGithub, fileEval), drop = 'IN')
-nobsE <- dim(DT)[[1]]
+nobsE <- dim(m2eval)[[1]]
 ```
 
 With `r nobsE` observations in the evaluation set, the predicted cases for each
@@ -1070,7 +1070,7 @@ evaluations will be shown. The actual predictions are available in the
 
 ```{r processEval}
 # Process evaluation file as per zero-inflated Poisson model 2
-m2eval[,c(2:8,11:12)] <- abs(m2eval[,c(2:8,11:12)])
+m2eval[, c(2:8, 11:12)] <- abs(m2eval[, c(2:8, 11:12)])
 m2eval$STARS[is.na(m2eval$STARS)] <- 0
 set.seed(525)
 m2eval.impute <- mice(m2eval, method = 'pmm', print = FALSE)
