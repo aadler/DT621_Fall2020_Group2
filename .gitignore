@@ -9,3 +9,4 @@ rsconnect/
 HW3/HW3-Group2.pdf
 *.bak
 *.sav
+*cache/
