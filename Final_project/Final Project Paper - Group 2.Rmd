@@ -29,7 +29,6 @@ library(dtplyr)
 library(stringr)
 library(ggplot2)
 library(scales)
-library(corrplot)
 library(data.table)
 ```
 ```{r loadData}
@@ -51,8 +50,6 @@ nobsGB <- nrow(gb_set)
 nobsFR <- nrow(fr_set)
 nobsDE <- nrow(de_set)
 nobsTot <- nobsUS + nobsCA + nobsGB + nobsFR + nobsDE
-nobsTotP <- prettyNum(nobsTot, big.mark = ",")
-nobsCAP <- prettyNum(nobsCA, big.mark = ",")
 ```
 
 # Introduction
@@ -256,7 +253,7 @@ and `comments`. We may also consider the country of viewing as well. From the
 There is not that much difference in the distribution of the numeric predictors
 between the countries where people view. 
 
-```{r numLogDensities}
+```{r numLogDensities, fig.height=4.5, fig.width=8}
 ggplot(fullSetN[measure != 'views'], aes(x = value, color = measure)) +
   geom_density(kernel = "epanechnikov") +
   facet_wrap(~ country) +
