@@ -1,0 +1,357 @@
+---
+title: "DATA 621 - Business Analytics and Data Mining"
+subtitle: 'Fall 2020 - Group 2 - Final Project Paper'
+author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
+    Bryan Persaud, Jeff Shamp
+date: "12/14/2020"
+output:
+  pdf_document:
+    extra_dependencies:
+      amsmath: null
+      inputenc: utf8
+      xcolor: dvipsnames
+      setspace: singlespacing
+    toc: FALSE
+    toc_depth: 3
+urlcolor: purple
+bibliography: finalprojectrefs.bib
+csl: ieee-with-url.csl
+abstract: "Using data from YouTube, we attempt to predict the number of views a video will receive using criteria such as location, category, number of likes, number of dislikes, and number of comments. Using forms of linear regression we have covered this semester, we will test various combinations of features for predictive power. [FILL IN OUTCOMES HERE]\\par\\textbf{Keywords:} Youtube, linear regression, count regression, R"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
+```
+```{r loadLibraries}
+library(knitr)
+library(dplyr)
+library(dtplyr)
+library(stringr)
+library(ggplot2)
+library(scales)
+library(corrplot)
+library(data.table)
+```
+```{r loadData}
+dataHeader <- "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/"
+ca_path <- paste0(dataHeader, "CAvideos.csv")
+us_path <- paste0(dataHeader, "USvideos.csv")
+gb_path <- paste0(dataHeader, "GBvideos.csv")
+fr_path <- paste0(dataHeader, "FRvideos.csv")
+de_path <- paste0(dataHeader, "DEvideos.csv")
+droppedFields <- c('description', 'thumbnail_link')
+ca_set <- fread(ca_path, drop = droppedFields)
+us_set <- fread(us_path, drop = droppedFields)
+gb_set <- fread(gb_path, drop = droppedFields)
+fr_set <- fread(fr_path, drop = droppedFields)
+de_set <- fread(de_path, drop = droppedFields)
+nobsUS <- nrow(us_set)
+nobsCA <- nrow(ca_set)
+nobsGB <- nrow(gb_set)
+nobsFR <- nrow(fr_set)
+nobsDE <- nrow(de_set)
+nobsTot <- nobsUS + nobsCA + nobsGB + nobsFR + nobsDE
+nobsTotP <- prettyNum(nobsTot, big.mark = ",")
+nobsCAP <- prettyNum(nobsCA, big.mark = ",")
+```
+
+# Introduction
+YouTube has changed the future of video entertainment forever [@Moylan2015ADo]. 
+In 2019, the platform was estimated to have between \$16 billion and \$25
+billion in revenue [@Wakabayashi2019YIa]. YouTube’s model connects a user’s
+creativity with a desire for global recognition [@GoogleUtY]. Before YouTube,
+international fame was not conceivable outside of a standard television or movie
+studio. Today, creators from all over the world are gaining international
+prominence using their own equipment and space. “YouTube is central to today’s
+video ecosystem,” says Enders Analysis research analyst Jamie McGowan Stuart
+[@Foster2020Yt1]. The current top channel “Vlad and Nikita” earns around \$312
+thousand per video [@TYL]. According to a survey from Google, 6 out of 10 people
+already prefer online video platforms or streaming services over live TV
+[@OBTlv]. There are researchers predicting that by 2025---four years now---half
+of viewers under the age of 32 will not pay TV service [@McQuivey2015B25].
+Understanding some of the underpinnings of what generates views is beneficial to
+anyone entering, or already in, the YouTube world.
+
+The remainder of this paper will cover a literature review, an overview of out
+methodology, the specifics of our modeling, a discussion of our findings,
+thoughts for future work, a statistical appendix, a detailed code appendix, and
+finally our references.
+
+# Literature Review
+With the popularity of Youtube, this is not a new question. Approaches this
+question in the greater data science network include those based on more
+advanced machine learning techniques such as SGD or neural net classifiers
+[@LEZ2019YVP]. Others leveraged NLP and specially engineered features such as
+"clickbait" or "NSFW" tags [@Srinivasan2017YVP]. These attempts usually used the
+same dataset as we are.
+
+Reviewing more academic literature uncovers research into the use of Support
+Vector Regression with various basis functions on Youtube and/or Facebook videos
+[@TR2017PPo; @PAG2013UEV]. Other attempts included building multi-stage treed
+regression models where the outcome of a first stage determined which specific
+second-stage model would be used for final popularity prediction [@OLL2016API].
+
+These approaches usually added a temporal element to their analysis, and used
+"earlier" values to predict later views. Using more sophisticated algorithms and
+temporal elements tended to return statistically significant models. The
+downside of these approaches are their complexity and opaqueness, of course. Our
+approach will necessarily be simpler, although likely more transparent, being
+restricted to the family of linear models covered in this course and not
+regressing over time.
+
+# Methodology
+Using the famous data set from Kaggle [@Mitchell2019TYV], we will explore
+relationships between a video’s views and the number of likes, dislikes, and
+comments. We may also use a video’s country of origin and the category or type
+of video as predictors.
+
+We manually scrubbed the data---which had numerous issues---so that we had five
+clean sets of statistics for the United States, Canada, Great Britain, France,
+and Germany. We identified both numeric and factor predictors, and engineered
+features for convenience as well. We will use these features to investigate
+relationships with actual views using standard linear and count (e.g. Poisson)
+regression models.
+
+Given the models, we will compare the RMSE and MAE on a special holdout set and
+the AIC on the training set and will select the model that performs best as the
+winner for this paper. We do not expect it to outperform more sophisticated
+models.
+
+# Experimentation & Results
+## Data Exploration
+```{r ca_data_prep}
+# Calculating the mean of the CA dataset
+ca_mean <- mean(ca_set$views)
+
+ca_set <- ca_set %>%
+  # Add country label
+  mutate(country = 'CA') %>% 
+  # Calculate above/below view mean
+  mutate(view_target = ifelse(views > ca_mean, 1L, 0L)) %>% 
+  # Count number of tags
+  mutate(tag_count = 1L + (str_count(ca_set$tags, ';'))) %>%
+  # Now that we have the tag counts, we no longer need the tags themselves
+  select(-tags)
+```
+```{r de_data_prep}
+de_mean <- mean(de_set$views)
+
+de_set <- de_set %>%
+  mutate(country = 'DE') %>%
+  mutate(view_target = ifelse(views > de_mean, 1L, 0L)) %>%
+  mutate(tag_count = 1L + (str_count(de_set$tags, ';'))) %>%
+  select(-tags)
+```
+```{r fr_data_prep}
+fr_mean <- mean(fr_set$views)
+
+fr_set <- fr_set %>%
+  mutate(country = 'FR') %>%
+  mutate(view_target = ifelse(views > fr_mean, 1L, 0L)) %>%
+  mutate(tag_count = 1L + (str_count(fr_set$tags, ';'))) %>%
+  select(-tags)
+```
+```{r gb_data_prep}
+gb_mean <- mean(gb_set$views)
+
+gb_set <- gb_set %>%
+  mutate(country = 'GB') %>%
+  mutate(view_target = ifelse(views > gb_mean, 1L, 0L)) %>%
+  mutate(tag_count = 1L + (str_count(gb_set$tags, ';'))) %>%
+  select(-tags)
+```
+```{r us_data_prep}
+us_mean <- mean(us_set$views)
+
+us_set <- us_set %>%
+  mutate(country = 'US') %>%
+  mutate(view_target = ifelse(views > us_mean, 1L, 0L)) %>%
+  mutate(tag_count = 1L + (str_count(us_set$tags, ';'))) %>%
+  select(-tags)
+```
+```{r merge_datasets}
+# Since each country has the same format, we can just stack them one on top of
+# the other. Much faster than merging.
+full_set <- rbind(ca_set, de_set, fr_set, gb_set, us_set)
+
+# Key the data table
+setkey(full_set, title, country, trending_date)
+
+# Calculate Global mean
+full_mean <- mean(full_set$views)
+
+# Calculate above/below global mean
+full_set <- full_set %>%
+  mutate(view_global_target = ifelse(views > full_mean, 1L, 0L))
+
+# Convert trending_date to a date
+full_set[, trending_date := as.IDate(trending_date, format = "%y.%d.%m")]
+
+# Make name shorter for display purposes
+setnames(full_set, c('comment_count', 'tag_count'), c('comments', 'tags'))
+```
+```{r mungeData}
+# Categorize the variable names
+boolVars <- c('comments_disabled', 'ratings_disabled', 'video_error_or_removed')
+intVars <- c('views', 'likes', 'dislikes', 'comments', 'tags')
+facVars <- c('country', 'category_id', 'view_target', 'view_global_target')
+dateVars <- c('trending_date', 'publish_time')
+charVars <- c('video_id', 'title', 'channel_title')
+
+# Convert factors into factors. Set US as base factor for country
+full_set[, `:=`(country = factor(country,
+                                 levels = c('US', 'CA', 'GB', 'FR', 'DE'),
+                                 labels = c('US', 'CA', 'GB', 'FR', 'DE')),
+                category_id = as.factor(category_id),
+                view_target = factor(view_target, levels = c(0, 1),
+                                     labels = c(0, 1)),
+                view_global_target = factor(view_global_target,
+                                            levels = c(0, 1),
+                                            labels = c(0, 1)))]
+# Melt for numerics
+fullSetN <- melt(full_set, id.vars = c(charVars, dateVars, boolVars, facVars),
+                 variable.factor = FALSE, variable.name = 'measure',
+                 value.name = 'value')
+
+# Melt for factors except country
+fullSetF <- melt(full_set,
+                 measure.vars = c('category_id', 'view_target', 'view_global_target'),
+                 variable.factor = FALSE, variable.name = 'measure',
+                 value.name = 'value')
+```
+```{r summaryStats}
+statsN <- data.table()
+# Loop through countries and calculate statistics. Table shown in appendix.
+for (i in unique(fullSetN$country)) {
+  statsN <- rbind(statsN, cbind(country = i,
+                  fullSetN[country == i,
+                           .(Mean = mean(value, na.rm = TRUE),
+                             SD = sd(value, na.rm = TRUE),
+                             Min = min(value, na.rm = TRUE),
+                             Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
+                             Median = median(value, na.rm = TRUE),
+                             Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
+                             Max = max(value, na.rm = TRUE),
+                             IQR = IQR(value, na.rm = TRUE)),
+                           keyby = c('measure')]))
+}
+# Add global stats
+statsN <- rbind(statsN,
+                cbind(country = "Global",
+                      fullSetN[,
+                               .(Mean = mean(value, na.rm = TRUE),
+                                 SD = sd(value, na.rm = TRUE),
+                                 Min = min(value, na.rm = TRUE),
+                                 Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
+                                 Median = median(value, na.rm = TRUE),
+                                 Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
+                                 Max = max(value, na.rm = TRUE),
+                                 IQR = IQR(value, na.rm = TRUE)),
+                               keyby = c('measure')]))
+```
+
+### Numeric Predictors
+For numeric predictors, we are using the number of `likes`, `dislikes`, `tags`,
+and `comments`. We may also consider the country of viewing as well. From the 
+There is not that much difference in the distribution of the numeric predictors
+between the countries where people view. 
+
+```{r numLogDensities}
+ggplot(fullSetN[measure != 'views'], aes(x = value, color = measure)) +
+  geom_density(kernel = "epanechnikov") +
+  facet_wrap(~ country) +
+  ggtitle("Predictor Density (semi-log scale)") +
+  scale_x_log10(label = scientific)
+```
+
+### Factor Predictors
+While tabular representation of factor predictors is difficult, a distribution
+of factors by value may prove informative. It is clear from the graphs below
+that interests vary by country. Category `24` seems to be the universal mode.
+Except for Great Britain, where they love their category `10`!
+
+```{r factorPlot1, fig.height=4.5, fig.width=8}
+ggplot(fullSetF[measure == 'category_id'], aes(y = value)) +
+  geom_bar() +
+  facet_wrap(~ country) +
+  ggtitle("Distribution by Category & Country") +
+  scale_x_continuous(labels = comma)
+```
+
+```{r factorPlot2, fig.height=3, fig.width=8}
+ggplot(fullSetF[measure != 'category_id'],
+             aes(x = value, fill = measure)) +
+  geom_bar(position = 'dodge2') +
+  facet_wrap(~ country) +
+  ggtitle("Country and Global Mean Views Exceedence") +
+  scale_y_continuous(labels = comma)
+```
+
+As with many events which follow the Pareto rule, most of the views are 
+attributable to a minority of the videos, as seen by the 0/1 disparity on both
+an individual country and a global basis. Great Britain has the closest parity
+on a global basis. British viewers are closest to the global average.
+
+## Feature Engineering
+
+## Model Building
+
+## Model Evaluation
+
+## Findings
+
+# Discussion & Conclusions
+
+# Appendix
+## Statistical Appendix
+A more detailed analysis of the empirical statistics for the numeric data is 
+found in the table below.
+
+\footnotesize
+```{r statsTable}
+kable(statsN, digits = 2,
+      caption = "Statistics for Numeric Variables by Country & Global",
+      format.args = list(big.mark = ","))
+```
+\normalsize
+
+## Code Appendix
+The code chunks below represent the R code called in order during the analysis.
+They are reproduced in the appendix for review and comment.
+
+```{r appendix, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
+```
+
+```{r loadLibraries}
+```
+```{r loadData}
+```
+```{r ca_data_prep}
+```
+```{r de_data_prep}
+```
+```{r fr_data_prep}
+```
+```{r gb_data_prep}
+```
+```{r us_data_prep}
+```
+```{r merge_datasets}
+```
+```{r mungeData}
+```
+```{r summaryStats}
+```
+```{r factorPlot1}
+```
+```{r factorPlot1}
+```
+
+<!-- Statistical Appendix-->
+```{r statsTable}
+```
+
+
+<!-- References needs to be last -->  
+# References
