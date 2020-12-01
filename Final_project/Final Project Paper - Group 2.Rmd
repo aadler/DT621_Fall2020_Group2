@@ -342,7 +342,7 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r factorPlot1}
 ```
-```{r factorPlot1}
+```{r factorPlot2}
 ```
 
 <!-- Statistical Appendix-->
