@@ -23,12 +23,14 @@ abstract: "Using data from YouTube, we attempt to predict the number of views a 
 knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 ```{r loadLibraries}
+library(doParallel)
 library(knitr)
 library(dplyr)
 library(dtplyr)
 library(stringr)
 library(ggplot2)
 library(scales)
+library(caret)
 library(data.table)
 ```
 ```{r loadData}
@@ -110,9 +112,8 @@ relationships with actual views using standard linear and count (e.g. Poisson)
 regression models.
 
 Given the models, we will compare the RMSE and MAE on a special holdout set and
-the AIC on the training set and will select the model that performs best as the
-winner for this paper. We do not expect it to outperform more sophisticated
-models.
+will select the model that performs best as the winner for this paper. We do not
+expect it to outperform more sophisticated models.
 
 # Experimentation & Results
 ## Data Exploration
@@ -289,9 +290,107 @@ attributable to a minority of the videos, as seen by the 0/1 disparity on both
 an individual country and a global basis. Great Britain has the closest parity
 on a global basis. British viewers are closest to the global average.
 
-## Feature Engineering
+## Feature Engineering & Selection
+Since we are not factoring in time, it is incorrect to use all the observations.
+Therefore, we will extract the latest observation by video by country and use
+this subset.
+
+```{r subsetExtraction}
+# Select the row numbers of the first entry of the latest trending date by title
+# and by country. There are 34 duplicates. Use this as our restricted data set
+# corresponding to the most recent view count. The inner set of brackets gets
+# the row number (called V1) and the outer set is a simple subset by those row
+# numbers.
+fullExtract <- full_set[
+  full_set[, .I[which.max(trending_date)], by = c('title', 'country')]$V1
+  ]
+```
+
+A feature that we will also consider is `lkratio`: the ratio of likes to
+dislikes. This will help ascertain if it is the magnitude or the preponderance
+which has a greater effect. As there may be some rare videos with no dislikes,
+the ratios will be set to 1. To capture the effect of likes with no dislikes, an
+indicator variable will be created or those "perfect" videos.
+
+```{r addFeatures}
+fullExtract[, `:=`(perfect =ifelse(likes > 0 & dislikes == 0, TRUE, FALSE),
+                   lkratio = ifelse(dislikes == 0, 1, likes / dislikes))]
+```
 
 ## Model Building
+We will first separate 20% of the data as a true holdout set. It is on this data
+that our models will be compared.
+
+```{r holdOut}
+set.seed(617)
+seenIDX <- createDataPartition(fullExtract$views, p = 0.8)$Resample1
+seenSet <- fullExtract[seenIDX, ]
+hideSet <- fullExtract[-seenIDX, ]
+```
+
+We will train models on the remaining 80% of the data.
+
+### Model 1: Linear Regression
+Keeping country as a predictor is of less interest. It will most likely track
+some measure of population. It is of more interest to see if there are
+differences in the factors between countries. To capture this by interactions
+would be combinatorially unfeasible. Instead, five models will be run, each on
+a country specific subset. This is akin to a manual implementation of a rules
+based regression model
+
+```{r modelLinear1, cache = 2L}
+# Using stepAIC means no cross-validation. Train on entire dataset.
+trC <- trainControl(method = 'none', allowParallel = TRUE)
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(181)
+for (ct in unique(fullExtract$country)) {
+  linMod <- train(views ~ likes + dislikes + comments + tags + category_id +
+                    comments_disabled + ratings_disabled +
+                    video_error_or_removed + perfect + lkratio,
+                  data = fullExtract[country == ct],
+                  family = gaussian(link = 'identity'), direction = 'both',
+                  method = 'glmStepAIC', trace = 0, trControl = trC)
+  assign(paste0('linMod', ct), linMod)
+}
+stopCluster(cl)
+lM1US <- linModUS$finalModel
+lM1CA <- linModCA$finalModel
+lM1GB <- linModGB$finalModel
+lM1FR <- linModFR$finalModel
+lM1DE <- linModDE$finalModel
+clM1US <- linModUS$finalModel$coefficients
+clM1CA <- linModCA$finalModel$coefficients
+clM1GB <- linModGB$finalModel$coefficients
+clM1FR <- linModFR$finalModel$coefficients
+clM1DE <- linModDE$finalModel$coefficients
+nclM1US <- names(clM1US)
+nclM1CA <- names(clM1CA)
+nclM1GB <- names(clM1GB)
+nclM1FR <- names(clM1FR)
+nclM1DE <- names(clM1DE)
+nnclM1US <- length(nclM1US)
+nnclM1CA <- length(nclM1CA)
+nnclM1GB <- length(nclM1GB)
+nnclM1FR <- length(nclM1FR)
+nnclM1DE <- length(nclM1DE)
+length(nclM1US) <- 22
+length(nclM1GB) <- 22
+length(nclM1FR) <- 22
+length(nclM1DE) <- 22
+```
+
+\footnotesize
+```{r m1Table}
+kable(data.frame(cbind(nclM1CA, nclM1DE, nclM1US, nclM1FR, nclM1GB)),
+      caption = "Model Coefficients by Country")
+```
+\normalsize
+
+The most parsimonious model is the one for Great Britain with only `r nnclM1GB`
+parameters. The most complex is the one for Canada with `r nnclM1CA`.
+
+
 
 ## Model Evaluation
 
@@ -324,6 +423,7 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r loadData}
 ```
+<!--  Data Exploration -->
 ```{r ca_data_prep}
 ```
 ```{r de_data_prep}
@@ -345,10 +445,23 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```{r factorPlot2}
 ```
 
+<!-- Feature Engineering & Selection -->
+```{r subsetExtraction}
+```
+```{r addFeatures}
+```
+
+<!-- Model Building -->
+```{r holdOut}
+```
+```{r modelLinear1}
+```
+```{r m1Table}
+```
+
 <!-- Statistical Appendix-->
 ```{r statsTable}
 ```
-
 
 <!-- References needs to be last -->  
 # References
