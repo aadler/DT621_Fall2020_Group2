@@ -6,11 +6,3 @@
  * Amber Ferger
  * Samantha Deokinanan
  * Avraham Adler
- 
-## Assignments
-TBD
- 
- 
- 
-
-
