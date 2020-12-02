@@ -34,18 +34,28 @@ library(caret)
 library(data.table)
 ```
 ```{r loadData}
-dataHeader <- "https://raw.githubusercontent.com/aadler/DT621_Fall2020_Group2/master/Final_project/Data/"
+dataHeader <- "../Final_project/Data2/"
 ca_path <- paste0(dataHeader, "CAvideos.csv")
 us_path <- paste0(dataHeader, "USvideos.csv")
 gb_path <- paste0(dataHeader, "GBvideos.csv")
 fr_path <- paste0(dataHeader, "FRvideos.csv")
 de_path <- paste0(dataHeader, "DEvideos.csv")
+colClass <- c(rep('character', 4L), 'integer', 'POSIXct', 'character',
+              rep('double', 4L), 'character', rep('boolean', 3L), 'character')
 droppedFields <- c('description', 'thumbnail_link')
-ca_set <- fread(ca_path, drop = droppedFields)
-us_set <- fread(us_path, drop = droppedFields)
-gb_set <- fread(gb_path, drop = droppedFields)
-fr_set <- fread(fr_path, drop = droppedFields)
-de_set <- fread(de_path, drop = droppedFields)
+
+# Download, expand, and ingest raw data files
+ca_set <- fread(ca_path, drop = droppedFields, colClasses = colClass)
+
+us_set <- fread(unzip(temp), drop = droppedFields)
+
+gb_set <- fread(unzip(temp), drop = droppedFields)
+
+fr_set <- fread(unzip(temp), drop = droppedFields)
+
+de_set <- fread(unzip(temp), drop = droppedFields)
+
+
 nobsUS <- nrow(us_set)
 nobsCA <- nrow(ca_set)
 nobsGB <- nrow(gb_set)
