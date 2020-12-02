@@ -23,7 +23,7 @@ abstract: "Using data from YouTube, we attempt to predict the number of views a 
 knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```
 ```{r loadLibraries}
-library(doParallel)
+library(jsonlite)
 library(knitr)
 library(dplyr)
 library(dtplyr)
@@ -34,34 +34,22 @@ library(caret)
 library(data.table)
 ```
 ```{r loadData}
-dataHeader <- "../Final_project/Data2/"
-ca_path <- paste0(dataHeader, "CAvideos.csv")
-us_path <- paste0(dataHeader, "USvideos.csv")
-gb_path <- paste0(dataHeader, "GBvideos.csv")
-fr_path <- paste0(dataHeader, "FRvideos.csv")
-de_path <- paste0(dataHeader, "DEvideos.csv")
+currentPath <- getwd()
+dataPath <- "Data2"
+us_path <- file.path(currentPath, dataPath, "USvideos.csv")
+
 colClass <- c(rep('character', 4L), 'integer', 'POSIXct', 'character',
-              rep('double', 4L), 'character', rep('boolean', 3L), 'character')
-droppedFields <- c('description', 'thumbnail_link')
-
-# Download, expand, and ingest raw data files
-ca_set <- fread(ca_path, drop = droppedFields, colClasses = colClass)
-
-us_set <- fread(unzip(temp), drop = droppedFields)
-
-gb_set <- fread(unzip(temp), drop = droppedFields)
-
-fr_set <- fread(unzip(temp), drop = droppedFields)
-
-de_set <- fread(unzip(temp), drop = droppedFields)
-
-
+              rep('double', 4L), rep('boolean', 3L))
+us_set <- fread(us_path, encoding = 'UTF-8', colClasses = colClass)
 nobsUS <- nrow(us_set)
-nobsCA <- nrow(ca_set)
-nobsGB <- nrow(gb_set)
-nobsFR <- nrow(fr_set)
-nobsDE <- nrow(de_set)
-nobsTot <- nobsUS + nobsCA + nobsGB + nobsFR + nobsDE
+
+# Category IDs
+us_cat_path <- file.path(currentPath, dataPath, "US_category_id.json")
+us_cats <- fromJSON(us_cat_path)
+
+us_cats <- data.table(id = as.integer(us_cats$items$id),
+                      category = us_cats$items$snippet[, 2])
+setkey(us_cats, id)
 ```
 
 # Introduction
@@ -114,12 +102,18 @@ relationships between a video’s views and the number of likes, dislikes, and
 comments. We may also use a video’s country of origin and the category or type
 of video as predictors.
 
-We manually scrubbed the data---which had numerous issues---so that we had five
-clean sets of statistics for the United States, Canada, Great Britain, France,
-and Germany. We identified both numeric and factor predictors, and engineered
+We manually scrubbed the data and discovered that the country-specific files
+really were not! They neither refer to videos created by country nor do they
+refer to views *specific* to country. Rather they are the total number of views
+and other predictors for that video on that day as collected by someone within
+that country. Meaning that aggregation is almost always multiplying. There may
+be some videos unique to a specific country---one which was not viewed in other
+countries, but they are many magnitudes smaller than those seen by all. As the
+United States had the most observations, we decided to analyze its data set.
+
+With the data, we identified both numeric and factor predictors, and engineered
 features for convenience as well. We will use these features to investigate
-relationships with actual views using standard linear and count (e.g. Poisson)
-regression models.
+relationships with actual views using linear regression models.
 
 Given the models, we will compare the RMSE and MAE on a special holdout set and
 will select the model that performs best as the winner for this paper. We do not
@@ -127,136 +121,56 @@ expect it to outperform more sophisticated models.
 
 # Experimentation & Results
 ## Data Exploration
-```{r ca_data_prep}
-# Calculating the mean of the CA dataset
-ca_mean <- mean(ca_set$views)
 
-ca_set <- ca_set %>%
-  # Add country label
-  mutate(country = 'CA') %>% 
-  # Calculate above/below view mean
-  mutate(view_target = ifelse(views > ca_mean, 1L, 0L)) %>% 
-  # Count number of tags
-  mutate(tag_count = 1L + (str_count(ca_set$tags, ';'))) %>%
-  # Now that we have the tag counts, we no longer need the tags themselves
-  select(-tags)
-```
-```{r de_data_prep}
-de_mean <- mean(de_set$views)
+```{r dataPrep}
+# Substitute category for numeric ID through joining
+us_set <- us_cats[us_set, on = 'id == category_id']
 
-de_set <- de_set %>%
-  mutate(country = 'DE') %>%
-  mutate(view_target = ifelse(views > de_mean, 1L, 0L)) %>%
-  mutate(tag_count = 1L + (str_count(de_set$tags, ';'))) %>%
-  select(-tags)
-```
-```{r fr_data_prep}
-fr_mean <- mean(fr_set$views)
+# Change data types for convenience, add target bucket, count tags and then
+# get rid of actual tags and category IDs
 
-fr_set <- fr_set %>%
-  mutate(country = 'FR') %>%
-  mutate(view_target = ifelse(views > fr_mean, 1L, 0L)) %>%
-  mutate(tag_count = 1L + (str_count(fr_set$tags, ';'))) %>%
-  select(-tags)
-```
-```{r gb_data_prep}
-gb_mean <- mean(gb_set$views)
-
-gb_set <- gb_set %>%
-  mutate(country = 'GB') %>%
-  mutate(view_target = ifelse(views > gb_mean, 1L, 0L)) %>%
-  mutate(tag_count = 1L + (str_count(gb_set$tags, ';'))) %>%
-  select(-tags)
-```
-```{r us_data_prep}
 us_mean <- mean(us_set$views)
 
-us_set <- us_set %>%
-  mutate(country = 'US') %>%
-  mutate(view_target = ifelse(views > us_mean, 1L, 0L)) %>%
-  mutate(tag_count = 1L + (str_count(us_set$tags, ';'))) %>%
-  select(-tags)
-```
-```{r merge_datasets}
-# Since each country has the same format, we can just stack them one on top of
-# the other. Much faster than merging.
-full_set <- rbind(ca_set, de_set, fr_set, gb_set, us_set)
-
-# Key the data table
-setkey(full_set, title, country, trending_date)
-
-# Calculate Global mean
-full_mean <- mean(full_set$views)
-
-# Calculate above/below global mean
-full_set <- full_set %>%
-  mutate(view_global_target = ifelse(views > full_mean, 1L, 0L))
-
-# Convert trending_date to a date and views to double since the sum > 2^31
-full_set[, `:=`(trending_date = as.IDate(trending_date, format = "%y.%d.%m"),
-                views = as.double(views))]
+us_set[, `:=`(trending_date = as.IDate(trending_date, format = "%y.%d.%m"),
+              views = as.double(views),
+              tag_count = 1L + str_count(us_set$tags, '[|]'),
+              view_target = factor(ifelse(views > us_mean, 1L, 0L),
+                                   levels = c(0, 1), labels = c(0, 1)),
+              id = NULL,
+              category = as.factor(category))
+       ][, `:=`(tags = NULL,
+                category = relevel(category, 'Entertainment'))]
 
 # Make name shorter for display purposes
-setnames(full_set, c('comment_count', 'tag_count'), c('comments', 'tags'))
-```
-```{r mungeData}
+setnames(us_set, c('comment_count', 'tag_count'), c('comments', 'tags'))
+
 # Categorize the variable names
 boolVars <- c('comments_disabled', 'ratings_disabled', 'video_error_or_removed')
-intVars <- c('views', 'likes', 'dislikes', 'comments', 'tags')
-facVars <- c('country', 'category_id', 'view_target', 'view_global_target')
+numVars <- c('views', 'likes', 'dislikes', 'comments', 'tags')
+facVars <- c('category', 'view_target')
 dateVars <- c('trending_date', 'publish_time')
 charVars <- c('video_id', 'title', 'channel_title')
 
-# Convert factors into factors. Set US as base factor for country
-full_set[, `:=`(country = factor(country,
-                                 levels = c('US', 'CA', 'GB', 'FR', 'DE'),
-                                 labels = c('US', 'CA', 'GB', 'FR', 'DE')),
-                category_id = as.factor(category_id),
-                view_target = factor(view_target, levels = c(0, 1),
-                                     labels = c(0, 1)),
-                view_global_target = factor(view_global_target,
-                                            levels = c(0, 1),
-                                            labels = c(0, 1)))]
 # Melt for numerics
-fullSetN <- melt(full_set, id.vars = c(charVars, dateVars, boolVars, facVars),
-                 variable.factor = FALSE, variable.name = 'measure',
-                 value.name = 'value')
+usSetN <- melt(us_set, measure.vars = numVars, variable.factor = FALSE,
+               variable.name = 'measure', value.name = 'value')
 
-# Melt for factors except country
-fullSetF <- melt(full_set,
-                 measure.vars = c('category_id', 'view_target', 'view_global_target'),
-                 variable.factor = FALSE, variable.name = 'measure',
-                 value.name = 'value')
-```
-```{r summaryStats}
-statsN <- data.table()
-# Loop through countries and calculate statistics. Table shown in appendix.
-for (i in unique(fullSetN$country)) {
-  statsN <- rbind(statsN, cbind(country = i,
-                  fullSetN[country == i,
-                           .(Mean = mean(value, na.rm = TRUE),
-                             SD = sd(value, na.rm = TRUE),
-                             Min = min(value, na.rm = TRUE),
-                             Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
-                             Median = median(value, na.rm = TRUE),
-                             Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
-                             Max = max(value, na.rm = TRUE),
-                             IQR = IQR(value, na.rm = TRUE)),
-                           keyby = c('measure')]))
-}
-# Add global stats
-statsN <- rbind(statsN,
-                cbind(country = "Global",
-                      fullSetN[,
-                               .(Mean = mean(value, na.rm = TRUE),
-                                 SD = sd(value, na.rm = TRUE),
-                                 Min = min(value, na.rm = TRUE),
-                                 Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
-                                 Median = median(value, na.rm = TRUE),
-                                 Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
-                                 Max = max(value, na.rm = TRUE),
-                                 IQR = IQR(value, na.rm = TRUE)),
-                               keyby = c('measure')]))
+# Melt for factors
+usSetF <- melt(us_set,
+               measure.vars = c('category', 'view_target'),
+               variable.factor = FALSE, variable.name = 'measure',
+               value.name = 'value')
+
+# Table of summary statistics
+statsN <- usSetN[, .(Mean = mean(value, na.rm = TRUE),
+                     SD = sd(value, na.rm = TRUE),
+                     Min = min(value, na.rm = TRUE),
+                     Q1 = quantile(value, prob = 0.25, na.rm = TRUE),
+                     Median = median(value, na.rm = TRUE),
+                     Q3 = quantile(value, prob = 0.75, na.rm = TRUE),
+                     Max = max(value, na.rm = TRUE),
+                     IQR = IQR(value, na.rm = TRUE)),
+                 keyby = c('measure')]
 ```
 
 ### Numeric Predictors
@@ -266,9 +180,8 @@ There is not that much difference in the distribution of the numeric predictors
 between the countries where people view. 
 
 ```{r numLogDensities, fig.height=4.5, fig.width=8}
-ggplot(fullSetN[measure != 'views'], aes(x = value, color = measure)) +
+ggplot(usSetN[measure != 'views'], aes(x = value, color = measure)) +
   geom_density(kernel = "epanechnikov") +
-  facet_wrap(~ country) +
   ggtitle("Predictor Density (semi-log scale)") +
   scale_x_log10(label = scientific)
 ```
@@ -276,30 +189,25 @@ ggplot(fullSetN[measure != 'views'], aes(x = value, color = measure)) +
 ### Factor Predictors
 While tabular representation of factor predictors is difficult, a distribution
 of factors by value may prove informative. It is clear from the graphs below
-that interests vary by country. Category `24` seems to be the universal mode.
-Except for Great Britain, where they love their category `10`!
+that interests vary by category. `Entertainment` seems to be the most common in
+the US with `Music` coming in second. 
 
 ```{r factorPlot1, fig.height=4.5, fig.width=8}
-ggplot(fullSetF[measure == 'category_id'], aes(y = value)) +
+ggplot(usSetF[measure == 'category'], aes(y = value)) +
   geom_bar() +
-  facet_wrap(~ country) +
-  ggtitle("Distribution by Category & Country") +
+  ggtitle("Distribution by Category") +
   scale_x_continuous(labels = comma)
 ```
 
 ```{r factorPlot2, fig.height=3, fig.width=8}
-ggplot(fullSetF[measure != 'category_id'],
-             aes(x = value, fill = measure)) +
+ggplot(usSetF[measure != 'category'], aes(x = value, fill = measure)) +
   geom_bar(position = 'dodge2') +
-  facet_wrap(~ country) +
   ggtitle("Country and Global Mean Views Exceedence") +
   scale_y_continuous(labels = comma)
 ```
 
 As with many events which follow the Pareto rule, most of the views are 
-attributable to a minority of the videos, as seen by the 0/1 disparity on both
-an individual country and a global basis. Great Britain has the closest parity
-on a global basis. British viewers are closest to the global average.
+attributable to a minority of the videos, as seen by the 0/1 disparity.
 
 ## Feature Engineering & Selection
 Since we are not factoring in time, it is incorrect to use all the observations.
@@ -312,8 +220,8 @@ this subset.
 # corresponding to the most recent view count. The inner set of brackets gets
 # the row number (called V1) and the outer set is a simple subset by those row
 # numbers.
-fullExtract <- full_set[
-  full_set[, .I[which.max(trending_date)], by = c('title', 'country')]$V1
+usExtract <- us_set[
+  us_set[, .I[which.max(views)], by = c('title')]$V1
   ]
 ```
 
@@ -324,108 +232,102 @@ the ratios will be set to 1. To capture the effect of likes with no dislikes, an
 indicator variable will be created or those "perfect" videos.
 
 ```{r addFeatures}
-fullExtract[, `:=`(perfect =ifelse(likes > 0 & dislikes == 0, TRUE, FALSE),
-                   lkratio = ifelse(dislikes == 0, 1, likes / dislikes))]
+usExtract[, `:=`(perfect =ifelse(likes > 0 & dislikes == 0, TRUE, FALSE),
+                 lkratio = ifelse(dislikes == 0, 1, likes / dislikes))]
 ```
 
 ## Model Building
 We will first separate 20% of the data as a true holdout set. It is on this data
-that our models will be compared.
+that our models will be compared. We will train models on the remaining 80% of
+the data.
 
 ```{r holdOut}
 set.seed(617)
-seenIDX <- createDataPartition(fullExtract$views, p = 0.8)$Resample1
-seenSet <- fullExtract[seenIDX, ]
-hideSet <- fullExtract[-seenIDX, ]
+seenIDX <- createDataPartition(usExtract$views, p = 0.8)$Resample1
+seenSet <- usExtract[seenIDX, ]
+hideSet <- usExtract[-seenIDX, ]
 ```
-
-We will train models on the remaining 80% of the data.
 
 ### Multiple Linear Regression
 Linear regression may be the best known algorithm used when analyzing a
 continuous numeric outcome. It searches for a linear relationship of the
 predictors that minimizes the squared error between the "predictor" function and
-the observations [@Sheather2009AMA].
+the observations [@Sheather2009AMA]. This model will engage in stepwise feature
+using the AIC as the optimization metric.
 
-#### Model 1: Model by Country
-The first linear regression model will actually be a rule-based set of models.
-The hypothesis is that using country as a factor will most likely simply track
-some measure of population. It is of more interest to see if there are
-differences in the factors between countries. To capture this by interactions
-would be combinatorially unfeasible. Instead, five models will be run, each on
-a country specific subset. This is akin to a manual implementation of a rules
-based regression model
-
-```{r modelLinear1, cache = 2L}
+```{r modelLinear1}
 # Using stepAIC means no cross-validation. Train on entire dataset.
-trC <- trainControl(method = 'none', allowParallel = TRUE)
+trC <- trainControl(method = 'none')
 
 # Capture the unique country codes
-ctCodes <- unique(fullExtract$country)
-cl <- makePSOCKcluster(5)
-registerDoParallel(cl)
 set.seed(181)
-maxPars <- 0
-for (ct in ctCodes) {
-  # Run the StepAIC algorithm inside the loop
-  linMod <- train(views ~ likes + dislikes + comments + tags + category_id +
-                    comments_disabled + ratings_disabled +
-                    video_error_or_removed + perfect + lkratio,
-                  data = fullExtract[country == ct],
-                  family = gaussian(link = 'identity'), direction = 'both',
-                  method = 'glmStepAIC', trace = 0, trControl = trC)
-  
-  # Assign the outcomes to dynamically "named" variables inside the loop
-  assign(paste0('linMod', ct), linMod)
-  assign(paste0('lM1', ct), linMod$finalModel)
-  assign(paste0('clM1', ct), linMod$finalModel$coefficients)
-  assign(paste0('nclM1', ct), names(linMod$finalModel$coefficients))
-  assign(paste0('nnclM1', ct), length(names(linMod$finalModel$coefficients)))
-  if ((length(names(linMod$finalModel$coefficients))) > maxPars) {
-    maxPars <- length(names(linMod$finalModel$coefficients))
-  }
-}
-stopCluster(cl)
-
-# R has difficulty with ragged arrays, so override the lengths to pad with NAs
-# Splitting for 80 char convenience
-length(nclM1US) <- length(nclM1GB) <- length(nclM1FR) <- maxPars
-length(nclM1DE) <- length(nclM1CA) <- maxPars
+linMod1 <- train(views ~ likes + dislikes + comments + tags + category +
+                   comments_disabled + ratings_disabled +
+                   video_error_or_removed + perfect + lkratio,
+                 data = usExtract, family = gaussian(link = 'identity'),
+                 method = 'glmStepAIC', direction = 'both', trace = 0,
+                 trControl = trC)
 ```
 
 \footnotesize
 ```{r m1Table}
-kable(data.frame(cbind(nclM1CA, nclM1DE, nclM1US, nclM1FR, nclM1GB)),
-      caption = "Model Coefficients by Country")
+kable(summary(linMod1$finalModel)$coefficients,
+      caption = "Model 1 Linear Regression Output",
+      digts = 3L, format.args = list(big.mark = ','))
 ```
 \normalsize
 
-The most parsimonious model is the one for Great Britain with only `r nnclM1GB`
-parameters. The most complex is the one for Canada with `r nnclM1CA`.
+The sign of these coefficients make sense in the main. The most predictive
+feature for views is `likes` followed by `dislikes`. Of course, one usually
+views a video at least once prior to rating it. We set the baseline category to
+`Entertainment`, considering it was the most popular. Therfore we expected
+negative coefficients for other categories. Interestingly, `Film & Animation`
+is positively correlated with likes over and above `Entertainment`, despite
+having fewer views.
 
-### Model 2: Linear Regression Globally
-While a rule-based model has the ability to fit data more closely based on those
-rules, it adds a significant amount of both parameter and model error
-[@Adler2015EtP; Adler2014For]. To test this hypothesis, we will run the same
-linear regression, but on the global results: the sum of all the numeric values
-by country except tags count. The other factors beside country deal with the
-video itself, like tag count, therefore they are identical across the countries.
+Other observations are that the magnitude of the coefficients is similar to that
+of the intercept, indicating that the predictors provide large swings to final
+views. The "worst" predictor by magnitude is the `Nonprofits & Activism`
+category; its negative coefficient is more than twice the baseline intercept
+views. The best, interestingly is if ratings are disabled. This is
+counterintuitive at first, but is logical. The amount of `likes`, `dislikes`,
+and `comments` are many orders of magnitude greater than 1. Therefore, their
+coefficients can be much smaller. A Boolean variable is either 1 or 0, therefore
+its coefficient is much greater even if its actual contribution is lower.
 
-```{r m2Prep}
-globalExtract <- unique(fullExtract[,
-                                    .(views = sum(views),
-                                      likes = sum(likes),
-                                      dislikes = sum(dislikes),
-                                      comments = sum(comments),
-                                      tags = tags,
-                                      category_id,
-                                      comments_disabled,
-                                      ratings_disabled,
-                                      video_error_or_removed),
-                                    keyby = title])
-
-
+Variable importance can be seen from the table below. The further down the list
+a coefficient preceded by a **`-`** is, the more important it is and the more it
+affected the AIC.
+\footnotesize
 ```
+                                  Df   Deviance    AIC
+<none>                               7.1243e+16 212209
++ `categoryAutos & Vehicles`       1 7.1222e+16 212209
++ tags                             1 7.1223e+16 212209
+- `categoryPeople & Blogs`         1 7.1278e+16 212210
+- categoryEducation                1 7.1278e+16 212210
+- perfectTRUE                      1 7.1279e+16 212210
++ video_error_or_removedTRUE       1 7.1237e+16 212210
++ `categoryPets & Animals`         1 7.1239e+16 212210
++ categoryGaming                   1 7.1239e+16 212210
++ `categoryTravel & Events`        1 7.1240e+16 212210
++ comments_disabledTRUE            1 7.1240e+16 212210
++ categorySports                   1 7.1240e+16 212210
++ `categoryScience & Technology`   1 7.1241e+16 212211
++ categoryShows                    1 7.1243e+16 212211
+- `categoryHowto & Style`          1 7.1287e+16 212211
+- `categoryFilm & Animation`       1 7.1299e+16 212212
+- `categoryNews & Politics`        1 7.1321e+16 212214
+- categoryMusic                    1 7.1338e+16 212215
+- `categoryNonprofits & Activism`  1 7.1345e+16 212216
+- ratings_disabledTRUE             1 7.1463e+16 212227
+- categoryComedy                   1 7.1467e+16 212227
+- lkratio                          1 7.3555e+16 212413
+- dislikes                         1 8.9091e+16 213650
+- comments                         1 8.9807e+16 213701
+- likes                            1 2.0217e+17 218939
+```
+\normalsize
 
 ## Model Evaluation
 
@@ -458,22 +360,9 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r loadData}
 ```
-<!--  Data Exploration -->
-```{r ca_data_prep}
+```{r dataPrep}
 ```
-```{r de_data_prep}
-```
-```{r fr_data_prep}
-```
-```{r gb_data_prep}
-```
-```{r us_data_prep}
-```
-```{r merge_datasets}
-```
-```{r mungeData}
-```
-```{r summaryStats}
+```{r numLogDensities}
 ```
 ```{r factorPlot1}
 ```
