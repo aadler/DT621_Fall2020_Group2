@@ -182,8 +182,9 @@ full_mean <- mean(full_set$views)
 full_set <- full_set %>%
   mutate(view_global_target = ifelse(views > full_mean, 1L, 0L))
 
-# Convert trending_date to a date
-full_set[, trending_date := as.IDate(trending_date, format = "%y.%d.%m")]
+# Convert trending_date to a date and views to double since the sum > 2^31
+full_set[, `:=`(trending_date = as.IDate(trending_date, format = "%y.%d.%m"),
+                views = as.double(views))]
 
 # Make name shorter for display purposes
 setnames(full_set, c('comment_count', 'tag_count'), c('comments', 'tags'))
@@ -330,8 +331,15 @@ hideSet <- fullExtract[-seenIDX, ]
 
 We will train models on the remaining 80% of the data.
 
-### Model 1: Linear Regression
-Keeping country as a predictor is of less interest. It will most likely track
+### Multiple Linear Regression
+Linear regression may be the best known algorithm used when analyzing a
+continuous numeric outcome. It searches for a linear relationship of the
+predictors that minimizes the squared error between the "predictor" function and
+the observations [@Sheather2009AMA].
+
+#### Model 1: Model by Country
+The first linear regression model will actually be a rule-based set of models.
+The hypothesis is that using country as a factor will most likely simply track
 some measure of population. It is of more interest to see if there are
 differences in the factors between countries. To capture this by interactions
 would be combinatorially unfeasible. Instead, five models will be run, each on
@@ -341,43 +349,38 @@ based regression model
 ```{r modelLinear1, cache = 2L}
 # Using stepAIC means no cross-validation. Train on entire dataset.
 trC <- trainControl(method = 'none', allowParallel = TRUE)
+
+# Capture the unique country codes
+ctCodes <- unique(fullExtract$country)
 cl <- makePSOCKcluster(5)
 registerDoParallel(cl)
 set.seed(181)
-for (ct in unique(fullExtract$country)) {
+maxPars <- 0
+for (ct in ctCodes) {
+  # Run the StepAIC algorithm inside the loop
   linMod <- train(views ~ likes + dislikes + comments + tags + category_id +
                     comments_disabled + ratings_disabled +
                     video_error_or_removed + perfect + lkratio,
                   data = fullExtract[country == ct],
                   family = gaussian(link = 'identity'), direction = 'both',
                   method = 'glmStepAIC', trace = 0, trControl = trC)
+  
+  # Assign the outcomes to dynamically "named" variables inside the loop
   assign(paste0('linMod', ct), linMod)
+  assign(paste0('lM1', ct), linMod$finalModel)
+  assign(paste0('clM1', ct), linMod$finalModel$coefficients)
+  assign(paste0('nclM1', ct), names(linMod$finalModel$coefficients))
+  assign(paste0('nnclM1', ct), length(names(linMod$finalModel$coefficients)))
+  if ((length(names(linMod$finalModel$coefficients))) > maxPars) {
+    maxPars <- length(names(linMod$finalModel$coefficients))
+  }
 }
 stopCluster(cl)
-lM1US <- linModUS$finalModel
-lM1CA <- linModCA$finalModel
-lM1GB <- linModGB$finalModel
-lM1FR <- linModFR$finalModel
-lM1DE <- linModDE$finalModel
-clM1US <- linModUS$finalModel$coefficients
-clM1CA <- linModCA$finalModel$coefficients
-clM1GB <- linModGB$finalModel$coefficients
-clM1FR <- linModFR$finalModel$coefficients
-clM1DE <- linModDE$finalModel$coefficients
-nclM1US <- names(clM1US)
-nclM1CA <- names(clM1CA)
-nclM1GB <- names(clM1GB)
-nclM1FR <- names(clM1FR)
-nclM1DE <- names(clM1DE)
-nnclM1US <- length(nclM1US)
-nnclM1CA <- length(nclM1CA)
-nnclM1GB <- length(nclM1GB)
-nnclM1FR <- length(nclM1FR)
-nnclM1DE <- length(nclM1DE)
-length(nclM1US) <- 22
-length(nclM1GB) <- 22
-length(nclM1FR) <- 22
-length(nclM1DE) <- 22
+
+# R has difficulty with ragged arrays, so override the lengths to pad with NAs
+# Splitting for 80 char convenience
+length(nclM1US) <- length(nclM1GB) <- length(nclM1FR) <- maxPars
+length(nclM1DE) <- length(nclM1CA) <- maxPars
 ```
 
 \footnotesize
@@ -390,7 +393,29 @@ kable(data.frame(cbind(nclM1CA, nclM1DE, nclM1US, nclM1FR, nclM1GB)),
 The most parsimonious model is the one for Great Britain with only `r nnclM1GB`
 parameters. The most complex is the one for Canada with `r nnclM1CA`.
 
+### Model 2: Linear Regression Globally
+While a rule-based model has the ability to fit data more closely based on those
+rules, it adds a significant amount of both parameter and model error
+[@Adler2015EtP; Adler2014For]. To test this hypothesis, we will run the same
+linear regression, but on the global results: the sum of all the numeric values
+by country except tags count. The other factors beside country deal with the
+video itself, like tag count, therefore they are identical across the countries.
 
+```{r m2Prep}
+globalExtract <- unique(fullExtract[,
+                                    .(views = sum(views),
+                                      likes = sum(likes),
+                                      dislikes = sum(dislikes),
+                                      comments = sum(comments),
+                                      tags = tags,
+                                      category_id,
+                                      comments_disabled,
+                                      ratings_disabled,
+                                      video_error_or_removed),
+                                    keyby = title])
+
+
+```
 
 ## Model Evaluation
 
