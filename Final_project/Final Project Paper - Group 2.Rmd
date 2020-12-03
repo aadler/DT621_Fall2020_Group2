@@ -316,6 +316,11 @@ the numeric ones. This makes sense. The amount of `likes`, `dislikes`, and
 coefficients can be much smaller. A Boolean variable is either 1 or 0, therefore
 its coefficient is much greater even if its actual contribution is lower.
 
+What also seems counterintuitive at first are the negative correlations between
+`lkratio` and `unan` being true with views. It may well be that conflict is good
+for Youtube videos. Perhaps the more a video is talked about or argued over, the
+more views it will get!
+
 ### Generalized Linear Model: Gaussian Errors & Log Link
 The generalized linear model (GLM) is an extension of the simple linear model,
 but the errors can be distributed per any member of the exponential family and
@@ -350,6 +355,10 @@ kable(summary(lm2$finalModel)$coefficients,
 ```
 \normalsize
 
+This model has more predictors than does the simple Gaussian (G)LM, although
+their signs are similar. What stands out is how many more categories were
+considered significant.
+
 ### ElasticNet: Penalized Regression
 Instead of using AIC to select features, one can make use of penalized
 regression. Using an \(L_1\) penalty is the underpinnings of Lasso regression,
@@ -367,9 +376,29 @@ lm3 <- train(x = seenX, y = seenY,
              method = 'enet', trControl = trC, tuneGrid = tG)
 ```
 
+```{r lm3Table}
+# The only way to extract the coefficients from an elastic net model in R
+# Is to predict them using the optimal tuning values
+
+lm3C <- predict(lm3$finalModel, s = lm3$finalModel$tuneValue[[1]],
+                type = 'coefficients', mode = 'fraction')
+lm3CC <- lm3C$coefficients[lm3C$coefficients != 0]
+kable(lm3CC, digits = 3L, format.args = list(big.mark = ','),
+      caption = 'Coefficients of "Optimal" Elastic Net Model')
+```
+
 There is no clean table of coefficients with elasticNet. Rather there is a
 sequence of models built behind the scenes. The coefficients of the selected
-model can be found in the appendix.
+model can be found through predicting them, but there are no corresponding
+p- or Z-values. Worse, there is no intercept returned.
+
+Nevertheless, the *relative* magnitude and sign of the parameters are in line
+with our expectations. `Nonprofits & Activism` has the largest factor effect, to
+the worse. Both `likes` and `dislikes` are positively correlated with views and
+`comments` is negatively correlated. A few more categories join
+`Film & Animation` as contributing to excess views over the baseline
+`Entertainment`. Lastly, having a preponderance of likes tends to reduce views.
+Conflict seems to be good for Youtubers!
 
 ## Model Evaluation
 
