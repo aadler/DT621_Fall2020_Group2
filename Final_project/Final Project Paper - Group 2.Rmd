@@ -25,8 +25,6 @@ knitr::opts_chunk$set(echo=FALSE, error=FALSE, warning=FALSE, message=FALSE)
 ```{r loadLibraries}
 library(jsonlite)
 library(knitr)
-library(dplyr)
-library(dtplyr)
 library(stringr)
 library(ggplot2)
 library(scales)
@@ -115,9 +113,9 @@ With the data, we identified both numeric and factor predictors, and engineered
 features for convenience as well. We will use these features to investigate
 relationships with actual views using linear regression models.
 
-Given the models, we will compare the RMSE and MAE on a special holdout set and
-will select the model that performs best as the winner for this paper. We do not
-expect it to outperform more sophisticated models.
+Given the models, we will compare the RMSE, \(R^2\), and MAE on a holdout set
+and will select the model that performs best as the winner for this paper. We do
+not expect it to outperform more sophisticated models.
 
 # Experimentation & Results
 ## Data Exploration
@@ -173,6 +171,18 @@ statsN <- usSetN[, .(Mean = mean(value, na.rm = TRUE),
                  keyby = c('measure')]
 ```
 
+### Target Variable
+
+```{r targDens}
+ggplot(usSetN[measure == 'views'], aes(x = value)) +
+  geom_density(kernel = "epanechnikov") +
+  ggtitle("Target Density (semi-log scale)") +
+  scale_x_log10(label = scientific)
+```
+
+On a log scale, `views` looks rather Gaussian, which implies it has a lognormal
+distribution.
+
 ### Numeric Predictors
 For numeric predictors, we are using the number of `likes`, `dislikes`, `tags`,
 and `comments`. We may also consider the country of viewing as well. From the 
@@ -185,6 +195,10 @@ ggplot(usSetN[measure != 'views'], aes(x = value, color = measure)) +
   ggtitle("Predictor Density (semi-log scale)") +
   scale_x_log10(label = scientific)
 ```
+
+As expected, the number of tags is orders of magnitude less than the rating or
+comment variables. On average there are more likes than comments and more
+comments then dislikes, but all three exhibit symmetric Gaussian-like behavior.
 
 ### Factor Predictors
 While tabular representation of factor predictors is difficult, a distribution
@@ -225,15 +239,24 @@ usExtract <- us_set[
   ]
 ```
 
+We will consider the relationship between `views` and the numerical predictors
+of `likes`, `dislikes`, `comments`, and `tags`. We will also consider the
+`category`, whether or not comments or ratings were disabled and, if there was
+an error with the video.
+
 A feature that we will also consider is `lkratio`: the ratio of likes to
 dislikes. This will help ascertain if it is the magnitude or the preponderance
 which has a greater effect. As there may be some rare videos with no dislikes,
-the ratios will be set to 1. To capture the effect of likes with no dislikes, an
-indicator variable will be created or those "perfect" videos.
+the ratios will be set to 1. 
 
 ```{r addFeatures}
-usExtract[, `:=`(perfect =ifelse(likes > 0 & dislikes == 0, TRUE, FALSE),
-                 lkratio = ifelse(dislikes == 0, 1, likes / dislikes))]
+usExtract[, lkratio := ifelse(dislikes == 0, 1, likes / dislikes)]
+
+modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
+                   comments_disabled + ratings_disabled +
+                   video_error_or_removed + lkratio,
+                   data = usExtract, fullRank = TRUE)
+modMat <- predict(modDum, usExtract)
 ```
 
 ## Model Building
@@ -244,92 +267,124 @@ the data.
 ```{r holdOut}
 set.seed(617)
 seenIDX <- createDataPartition(usExtract$views, p = 0.8)$Resample1
-seenSet <- usExtract[seenIDX, ]
-hideSet <- usExtract[-seenIDX, ]
+seenX <- modMat[seenIDX, ]
+seenY <- usExtract$views[seenIDX]
+hideX <- as.data.frame(modMat[-seenIDX, ])
+hideY <- usExtract$views[-seenIDX]
 ```
 
-### Multiple Linear Regression
+### Simple Linear Regression
 Linear regression may be the best known algorithm used when analyzing a
 continuous numeric outcome. It searches for a linear relationship of the
 predictors that minimizes the squared error between the "predictor" function and
 the observations [@Sheather2009AMA]. This model will engage in stepwise feature
-using the AIC as the optimization metric.
+selection using the AIC as the optimization metric.
 
-```{r modelLinear1}
+```{r lm1Train}
 # Using stepAIC means no cross-validation. Train on entire dataset.
 trC <- trainControl(method = 'none')
-
-# Capture the unique country codes
 set.seed(181)
-linMod1 <- train(views ~ likes + dislikes + comments + tags + category +
-                   comments_disabled + ratings_disabled +
-                   video_error_or_removed + perfect + lkratio,
-                 data = usExtract, family = gaussian(link = 'identity'),
-                 method = 'glmStepAIC', direction = 'both', trace = 0,
-                 trControl = trC)
+lm1 <- train(x = seenX, y = seenY, family = gaussian(link = 'identity'),
+             method = 'glmStepAIC', direction = 'both', trace = 0,
+             trControl = trC)
 ```
 
 \footnotesize
-```{r m1Table}
-kable(summary(linMod1$finalModel)$coefficients,
+```{r lm1Table}
+kable(summary(lm1$finalModel)$coefficients,
       caption = "Model 1 Linear Regression Output",
       digts = 3L, format.args = list(big.mark = ','))
 ```
 \normalsize
 
-The sign of these coefficients make sense in the main. The most predictive
-feature for views is `likes` followed by `dislikes`. Of course, one usually
-views a video at least once prior to rating it. We set the baseline category to
-`Entertainment`, considering it was the most popular. Therfore we expected
-negative coefficients for other categories. Interestingly, `Film & Animation`
-is positively correlated with likes over and above `Entertainment`, despite
-having fewer views.
+The signs of these coefficients make sense in the main. Increased `likes`,
+`dislikes` are correlated with increased views. Of course one usually views a
+video at least once prior to rating it. Increased `comments` is negatively
+correlated with views. 
 
-Other observations are that the magnitude of the coefficients is similar to that
-of the intercept, indicating that the predictors provide large swings to final
-views. The "worst" predictor by magnitude is the `Nonprofits & Activism`
-category; its negative coefficient is more than twice the baseline intercept
-views. The best, interestingly is if ratings are disabled. This is
-counterintuitive at first, but is logical. The amount of `likes`, `dislikes`,
-and `comments` are many orders of magnitude greater than 1. Therefore, their
+We set the baseline category to `Entertainment`, considering it was the most
+popular. Therefore we expected negative coefficients for other categories. We
+were surprised that was not the case. The "worst" category predictor by
+magnitude is the `Nonprofits & Activism`. The "best" is `Gaming`.
+
+The factor predictors tend to have much higher magnitude coefficients than do
+the numeric ones. This makes sense. The amount of `likes`, `dislikes`, and
+`comments` are many orders of magnitude greater than 1. Therefore, their
 coefficients can be much smaller. A Boolean variable is either 1 or 0, therefore
 its coefficient is much greater even if its actual contribution is lower.
 
-Variable importance can be seen from the table below. The further down the list
-a coefficient preceded by a **`-`** is, the more important it is and the more it
-affected the AIC.
-\footnotesize
+### Generalized Linear Model: Gaussian Errors & Log Link
+The generalized linear model (GLM) is an extension of the simple linear model,
+but the errors can be distributed per any member of the exponential family and
+the relationship between some function of the predictors---called the link---and
+the mean needs to be linear, not that the mean itself must be linear in the
+predictors [@Faraway2006EtL]. 
+
+The model under consideration here assumes a Gaussian distribution of the
+errors, but a multiplicative relationship between the mean and the predictors.
+This is expressed by using a log link function. This is **not** the canonical
+link function for the Gaussian GLM, but as we are using numerical methods there
+is no issue.
+
+This approach *appears* similar to that of the common technique of performing a
+standard linear regression on the logs of the observations, but is different. As
+per [@Gelman2006Lta], one approach *"…log transforms observed values, while the*
+*second one log transforms the expected value.…the key difference being the*
+*relation between the predicted value and the variance."*
+
+```{r lm2Train}
+set.seed(181)
+lm2 <- train(x = seenX, y = seenY, family = gaussian(link = 'log'),
+             method = 'glmStepAIC', direction = 'both', trace = 0,
+             trControl = trC)
 ```
-                                  Df   Deviance    AIC
-<none>                               7.1243e+16 212209
-+ `categoryAutos & Vehicles`       1 7.1222e+16 212209
-+ tags                             1 7.1223e+16 212209
-- `categoryPeople & Blogs`         1 7.1278e+16 212210
-- categoryEducation                1 7.1278e+16 212210
-- perfectTRUE                      1 7.1279e+16 212210
-+ video_error_or_removedTRUE       1 7.1237e+16 212210
-+ `categoryPets & Animals`         1 7.1239e+16 212210
-+ categoryGaming                   1 7.1239e+16 212210
-+ `categoryTravel & Events`        1 7.1240e+16 212210
-+ comments_disabledTRUE            1 7.1240e+16 212210
-+ categorySports                   1 7.1240e+16 212210
-+ `categoryScience & Technology`   1 7.1241e+16 212211
-+ categoryShows                    1 7.1243e+16 212211
-- `categoryHowto & Style`          1 7.1287e+16 212211
-- `categoryFilm & Animation`       1 7.1299e+16 212212
-- `categoryNews & Politics`        1 7.1321e+16 212214
-- categoryMusic                    1 7.1338e+16 212215
-- `categoryNonprofits & Activism`  1 7.1345e+16 212216
-- ratings_disabledTRUE             1 7.1463e+16 212227
-- categoryComedy                   1 7.1467e+16 212227
-- lkratio                          1 7.3555e+16 212413
-- dislikes                         1 8.9091e+16 213650
-- comments                         1 8.9807e+16 213701
-- likes                            1 2.0217e+17 218939
+
+\footnotesize
+```{r lm2Table}
+kable(summary(lm2$finalModel)$coefficients,
+      caption = "Model 3 Linear Regression Output",
+      digts = 3L, format.args = list(big.mark = ','))
 ```
 \normalsize
 
+### ElasticNet: Penalized Regression
+Instead of using AIC to select features, one can make use of penalized
+regression. Using an \(L_1\) penalty is the underpinnings of Lasso regression,
+which can perform feature selection. Using a squared error term, \(L_2\), is at
+the heart of ridge regression [@HTF2009TEo]. Using both methods together is
+called the elastic net [@ZH2005RaV]. To tune the hyperparameters, which includes
+the weighting between Lasso and Ridge, we will use 10-fold cross-validation.
+
+```{r lm3Train}
+trC <- trainControl(method = 'cv', number = 10L)
+tG <- expand.grid(fraction = seq(0.8, 1, 0.001),
+                  lambda = seq(0, 0.02, 0.001))
+set.seed(181)
+lm3 <- train(x = seenX, y = seenY,
+             method = 'enet', trControl = trC, tuneGrid = tG)
+```
+
+There is no clean table of coefficients with elasticNet. Rather there is a
+sequence of models built behind the scenes. The coefficients of the selected
+model can be found in the appendix.
+
 ## Model Evaluation
+
+```{r modTest}
+lm1P <- predict(lm1, newdata = hideX)
+lm2P <- predict(lm2, newdata = hideX)
+lm3P <- predict(lm3, newdata = hideX)
+compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet'),
+                        RMSE = c(RMSE(lm1P, hideY), RMSE(lm2P, hideY),
+                                 RMSE(lm3P, hideY)),
+                        R2 = c(R2(lm1P, hideY, formula = 'traditional'),
+                               R2(lm2P, hideY, formula = 'traditional'),
+                               R2(lm3P, hideY, formula = 'traditional')),
+                        MAE = c(MAE(lm1P, hideY), MAE(lm2P, hideY),
+                                MAE(lm3P, hideY)))
+kable(compTable, digits = 3L, format.args = list(big.mark = ','),
+      caption = "Model Performance on Test Set")
+```
 
 ## Findings
 
@@ -378,9 +433,19 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 <!-- Model Building -->
 ```{r holdOut}
 ```
-```{r modelLinear1}
+```{r lm1Train}
 ```
-```{r m1Table}
+```{r lm1Table}
+```
+```{r lm2Train}
+```
+```{r lm2Table}
+```
+```{r lm3Train}
+```
+
+<!-- Model Evaluation -->
+```{r modTest}
 ```
 
 <!-- Statistical Appendix-->
