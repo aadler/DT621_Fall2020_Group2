@@ -37,7 +37,7 @@ dataPath <- "Data2"
 us_path <- file.path(currentPath, dataPath, "USvideos.csv")
 
 colClass <- c(rep('character', 4L), 'integer', 'POSIXct', 'character',
-              rep('double', 4L), rep('boolean', 3L))
+              rep('double', 4L), rep('logical', 3L))
 us_set <- fread(us_path, encoding = 'UTF-8', colClasses = colClass)
 nobsUS <- nrow(us_set)
 
@@ -124,8 +124,8 @@ not expect it to outperform more sophisticated models.
 # Substitute category for numeric ID through joining
 us_set <- us_cats[us_set, on = 'id == category_id']
 
-# Change data types for convenience, add target bucket, count tags and then
-# get rid of actual tags and category IDs
+# Change data types for convenience, add target bucket, count tags and then get
+# rid of actual tags and category IDs
 
 us_mean <- mean(us_set$views)
 
@@ -247,19 +247,22 @@ an error with the video.
 A feature that we will also consider is `lkratio`: the ratio of likes to
 dislikes. This will help ascertain if it is the magnitude or the preponderance
 which has a greater effect. As there may be some rare videos with no dislikes,
-the ratios will be set to 1. 
+the ratios will be set to 1. The variable `unan`, short for unanimous, will
+reflect that some videos have likes but no dislikes, to balance the ratio of 1
+which should have been `NaN`, a division by 0 error.
 
 ```{r addFeatures}
-usExtract[, lkratio := ifelse(dislikes == 0, 1, likes / dislikes)]
+usExtract[, `:=`(lkratio = ifelse(dislikes == 0, 1, likes / dislikes),
+                 unan = ifelse(dislikes == 0 & likes > 0, TRUE, FALSE))]
 
 modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
                    comments_disabled + ratings_disabled +
-                   video_error_or_removed + lkratio,
+                   video_error_or_removed + lkratio + unan,
                    data = usExtract, fullRank = TRUE)
 modMat <- predict(modDum, usExtract)
 ```
 
-## Model Building
+## Model Building & Interpretation
 We will first separate 20% of the data as a true holdout set. It is on this data
 that our models will be compared. We will train models on the remaining 80% of
 the data.
@@ -297,15 +300,15 @@ kable(summary(lm1$finalModel)$coefficients,
 ```
 \normalsize
 
-The signs of these coefficients make sense in the main. Increased `likes`,
+The signs of these coefficients make sense in the main. Increased `likes` and
 `dislikes` are correlated with increased views. Of course one usually views a
 video at least once prior to rating it. Increased `comments` is negatively
 correlated with views. 
 
 We set the baseline category to `Entertainment`, considering it was the most
-popular. Therefore we expected negative coefficients for other categories. We
-were surprised that was not the case. The "worst" category predictor by
-magnitude is the `Nonprofits & Activism`. The "best" is `Gaming`.
+popular. Therefore we expected negative coefficients for other categories found
+significant. We were surprised that `Film & Animation` was an exception. The
+"worst" category predictor by magnitude is the `Nonprofits & Activism`.
 
 The factor predictors tend to have much higher magnitude coefficients than do
 the numeric ones. This makes sense. The amount of `likes`, `dislikes`, and
@@ -385,8 +388,6 @@ compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet'),
 kable(compTable, digits = 3L, format.args = list(big.mark = ','),
       caption = "Model Performance on Test Set")
 ```
-
-## Findings
 
 # Discussion & Conclusions
 
