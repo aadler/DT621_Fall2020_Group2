@@ -3,7 +3,7 @@ title: "DATA 621 - Business Analytics and Data Mining"
 subtitle: 'Fall 2020 - Group 2 - Final Project Paper'
 author: Avraham Adler, Samantha Deokinanan, Amber Ferger, John Kellogg,
     Bryan Persaud, Jeff Shamp
-date: "12/14/2020"
+date: "12/11/2020"
 output:
   pdf_document:
     extra_dependencies:
@@ -11,12 +11,12 @@ output:
       inputenc: utf8
       xcolor: dvipsnames
       setspace: singlespacing
-    toc: FALSE
+    toc: TRUE
     toc_depth: 3
 urlcolor: purple
 bibliography: finalprojectrefs.bib
 csl: ieee-with-url.csl
-abstract: "Using data from YouTube, we attempt to predict the number of views a video will receive using criteria such as location, category, number of likes, number of dislikes, and number of comments. Using forms of linear regression we have covered this semester, we will test various combinations of features for predictive power. [FILL IN OUTCOMES HERE]\\par\\textbf{Keywords:} Youtube, linear regression, count regression, R"
+abstract: "Using data from YouTube, we attempt to predict the number of views a video will receive using criteria such as location, category, number of likes, number of dislikes, and number of comments. Using forms of linear regression we have covered this semester, we will test various combinations of features for predictive power. YouTubers are advised to allow viewers to interact via ratings and to post content which will engender heated discussion. \\par\\textbf{Keywords:} Youtube, linear regression, elastic net, R"
 ---
 
 ```{r setup, include=FALSE}
@@ -59,9 +59,9 @@ international fame was not conceivable outside of a standard television or movie
 studio. Today, creators from all over the world are gaining international
 prominence using their own equipment and space. “YouTube is central to today’s
 video ecosystem,” says Enders Analysis research analyst Jamie McGowan Stuart
-[@Foster2020Yt1]. The current top channel “Vlad and Nikita” earns around \$312
-thousand per video [@TYL]. According to a survey from Google, 6 out of 10 people
-already prefer online video platforms or streaming services over live TV
+[@Foster2020Yt1]. The current top channel “Vlad and Nikita” earns around
+\$312,000 per video [@TYL]. According to a survey from Google, 6 out of 10
+people already prefer online video platforms or streaming services over live TV
 [@OBTlv]. There are researchers predicting that by 2025---four years now---half
 of viewers under the age of 32 will not pay TV service [@McQuivey2015B25].
 Understanding some of the underpinnings of what generates views is beneficial to
@@ -77,8 +77,8 @@ With the popularity of Youtube, this is not a new question. Approaches this
 question in the greater data science network include those based on more
 advanced machine learning techniques such as SGD or neural net classifiers
 [@LEZ2019YVP]. Others leveraged NLP and specially engineered features such as
-"clickbait" or "NSFW" tags [@Srinivasan2017YVP]. These attempts usually used the
-same dataset as we are.
+"clickbait" or "NSFW" tags [@Srinivasan2017YVP]. These attempts often used the
+same dataset as we are using.
 
 Reviewing more academic literature uncovers research into the use of Support
 Vector Regression with various basis functions on Youtube and/or Facebook videos
@@ -242,7 +242,7 @@ balance =\begin{cases}
 \end{cases}
 \]
 This constrains the ratio to the interval \([0, 1]\) with a maximum of 1 when
-the two are equal. Now, division by 0 can only occure when both are 0. This 
+the two are equal. Now, division by 0 can only occur when both are 0. This 
 usually occurs when ratings are disabled. There is only `r ldOn` case out of the
 `r nobsUSExt` observations where the ratings were not disabled, yet there are
 neither likes nor dislikes. As this is a distinct incongruity for YouTube, we
@@ -320,7 +320,7 @@ proceed through feature selection using the AIC as the optimization metric.
 ```{r dummyVarsAA}
 # Create dummy Variables. These will be used for the next three models
 modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
-                   cmtDisabled + rtgDisabled + vidError + disp,
+                   cmtDisabled + rtgDisabled + vidError + balance,
                    data = seenSet, fullRank = TRUE)
 seenX <- predict(modDum, seenSet)
 seenY <- seenSet$views
@@ -425,8 +425,8 @@ lm3 <- train(x = seenX, y = seenY,
 ```
 
 ```{r lm3Table}
-# The only way to extract the coefficients from an elastic net model in R
-# Is to predict them using the optimal tuning values
+# The only way to extract the coefficients from an elastic net model in R is to
+# predict them using the optimal tuning values
 
 lm3C <- predict(lm3$finalModel, s = lm3$finalModel$tuneValue[[1]],
                 type = 'coefficients', mode = 'fraction')
@@ -446,20 +446,25 @@ with views and `comments` is negatively correlated. A few more categories join
 `Film & Animation` as contributing to excess views over the baseline
 `Entertainment`. But `Nonprofits & Activism` has the largest factor by far, and
 it is negative, which stands in contrast to the second model. Lastly, having a
-larger disparity (ratio of likes to dislikes closer to 1of likes tends to reduce views.
-Conflict seems to be good for Youtubers!
+higher balance---ratio of likes to dislikes closer to 1---tends to increase
+views. Conflict seems to be good for YouTubers!
 
 ## Model Evaluation
 
 ```{r modTest}
+# Process the hidden set
 tstDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
-                   cmtDisabled + rtgDisabled + vidError + disp,
+                   cmtDisabled + rtgDisabled + vidError + balance,
                    data = hideSet, fullRank = TRUE)
 hideX <- predict(tstDum, hideSet)
 hideY <- hideSet$views
+
+# Predict using the models
 lm1P <- predict(lm1, newdata = hideX)
 lm2P <- predict(lm2, newdata = hideX)
 lm3P <- predict(lm3, newdata = hideX)
+
+# Compare the results
 compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet'),
                         RMSE = c(RMSE(lm1P, hideY), RMSE(lm2P, hideY),
                                  RMSE(lm3P, hideY)),
@@ -475,21 +480,82 @@ kable(compTable, digits = 3L, format.args = list(big.mark = ','),
 # Discussion & Conclusions
 The three models contain both intuitive and counter-intuitive results. As
 expected, videos with more ratings tend to have more views. However, as likes
-outnumber dislikes, that tends to reduce the number of views. Having a video
-witk
+outnumber dislikes, that tends to reduce the number of views. All the models
+agree that having a video whose likes and dislikes are close in magnitude
+increases the propensity for views.
+ 
+The elasticNet model performed best, and it's clear that the log link is
+inferior to the identity link for this data set. If there is any clear takeaways
+for prospective YouTubers, it would be:
 
+  * Make sure your videos will engender heated discussions. You want as many
+  *dislikes* as likes. That seems to drive attention to your video!
+  * Keep your ratings enabled. Allowing users to rate your video drives
+  attention to them!
+  * Perhaps disable comments, though.
+  * Stay **away** from activism. 
+  * Talk about films or comics. This probably includes the anime and manga
+  phenomena.
+  * Having more tags is better than having fewer.
+
+The main limitation of this analysis is that the linear model, even with
+penalization, is probably not the best model for human behavior. There are
+likely non-linear effects and tipping points which could be much better captured
+by tree-based models or even SVMs with the appropriate kernel.
+
+Also, this analysis may be valuable for someone planning a video, but it does
+not help them react once the video is posted, as we did not investigate any
+changes over time.
+
+Lastly, we encountered problems trying to aggregate disjoint data by country
+without falling prey to gross overcounting.
+
+Areas of future work would include investigating more sophisticated algorithms,
+analyzing not only final views but growth patterns, and either finding better
+sources or methods to increase the available data to include other countries
+without overcounting.
+
+\clearpage
 # Appendix
 ## Statistical Appendix
+### Table of Numeric Predictors
 A more detailed analysis of the empirical statistics for the numeric data is 
 found in the table below.
 
 \footnotesize
 ```{r statsTable}
-kable(statsN, digits = 2,
-      caption = "Statistics for Numeric Variables by Country & Global",
+# Empirical stats Table
+kable(statsN, digits = 2, caption = "Table of Numeric Predictors",
       format.args = list(big.mark = ","))
 ```
 \normalsize
+
+### Variable Importance: Model 1
+
+```{r lm1VI}
+# Model 1: VarImp 
+ggplot(varImp(lm1)) + ggtitle('Variable Importance: Model 1')
+```
+
+### Variable Importance: Model 2
+
+```{r lm2VI}
+# Model 2: VarImp 
+ggplot(varImp(lm2)) + ggtitle('Variable Importance: Model 2')
+```
+
+### Variable Importance: Model 3
+```{r lm3VI}
+# Model 3: VarImp 
+ggplot(varImp(lm3)) + ggtitle('Variable Importance: Model 3')
+```
+
+### Hyperparameter Tuning: Model 3
+
+```{r lm3Plot}
+# Model 3: Tuning paths
+ggplot(lm3) + ggtitle('Tuning Parameters: Model 3')
+```
 
 ## Code Appendix
 The code chunks below represent the R code called in order during the analysis.
@@ -544,6 +610,15 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 <!-- Statistical Appendix-->
 ```{r statsTable}
 ```
+```{r lm1VI}
+```
+```{r lm2VI}
+```
+```{r lm2VI}
+```
+```{r lm3Plot}
+```
 
-<!-- References needs to be last -->  
+<!-- References needs to be last -->
+\clearpage
 # References
