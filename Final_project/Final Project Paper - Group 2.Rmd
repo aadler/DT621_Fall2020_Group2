@@ -97,8 +97,8 @@ regressing over time.
 # Methodology
 Using the famous data set from Kaggle [@Mitchell2019TYV], we will explore
 relationships between a video’s views and the number of likes, dislikes, and
-comments. We may also use a video’s country of origin and the category or type
-of video as predictors.
+comments using R [@RCT2020RAL]. We may also use a video’s country of origin and
+the category or type of video as predictors.
 
 We manually scrubbed the data and discovered that the country-specific files
 really were not! They neither refer to videos created by country nor do they
@@ -119,45 +119,50 @@ not expect it to outperform more sophisticated models.
 
 # Experimentation & Results
 ## Data Exploration
+Since we are not factoring in time, it is incorrect to use all the observations.
+Therefore, we will extract the latest observation by video by country and use
+this subset.
 
 ```{r dataPrep}
+# Select the row numbers of the first entry of the latest trending date by title
+# and by country. There are 34 duplicates. Use this as our restricted data set
+# corresponding to the most recent view count. The inner set of brackets gets
+# the row number (called V1) and the outer set is a simple subset by those row
+# numbers.
+usExtract <- us_set[
+  us_set[, .I[which.max(views)], by = c('title')]$V1
+  ]
+nobsUSExt <- dim(usExtract)[[1]]
+
 # Substitute category for numeric ID through joining
-us_set <- us_cats[us_set, on = 'id == category_id']
+usExtract <- us_cats[usExtract, on = 'id == category_id']
 
-# Change data types for convenience, add target bucket, count tags and then get
-# rid of actual tags and category IDs
-
-us_mean <- mean(us_set$views)
-
-us_set[, `:=`(trending_date = as.IDate(trending_date, format = "%y.%d.%m"),
-              views = as.double(views),
-              tag_count = 1L + str_count(us_set$tags, '[|]'),
-              view_target = factor(ifelse(views > us_mean, 1L, 0L),
-                                   levels = c(0, 1), labels = c(0, 1)),
-              id = NULL,
-              category = as.factor(category))
-       ][, `:=`(tags = NULL,
-                category = relevel(category, 'Entertainment'))]
+# Change data types for convenience, count tags and then get rid of actual tags
+# and replace category IDs with actual categories
+usExtract[, `:=`(trending_date = as.IDate(trending_date, format = "%y.%d.%m"),
+                 views = as.double(views),
+                 tag_count = 1L + str_count(tags, '[|]'),
+                 id = NULL,
+                 category = as.factor(category))
+          ][, `:=`(tags = NULL,
+                   category = relevel(category, 'Entertainment'))]
 
 # Make name shorter for display purposes
-setnames(us_set, c('comment_count', 'tag_count'), c('comments', 'tags'))
+setnames(usExtract,
+         c('comment_count', 'tag_count', 'comments_disabled',
+           'ratings_disabled', 'video_error_or_removed'),
+         c('comments', 'tags', 'cmtDisabled', 'rtgDisabled', 'vidError'))
 
 # Categorize the variable names
-boolVars <- c('comments_disabled', 'ratings_disabled', 'video_error_or_removed')
 numVars <- c('views', 'likes', 'dislikes', 'comments', 'tags')
-facVars <- c('category', 'view_target')
-dateVars <- c('trending_date', 'publish_time')
-charVars <- c('video_id', 'title', 'channel_title')
 
 # Melt for numerics
-usSetN <- melt(us_set, measure.vars = numVars, variable.factor = FALSE,
+usSetN <- melt(usExtract, measure.vars = numVars, variable.factor = FALSE,
                variable.name = 'measure', value.name = 'value')
 
-# Melt for factors
-usSetF <- melt(us_set,
-               measure.vars = c('category', 'view_target'),
-               variable.factor = FALSE, variable.name = 'measure',
-               value.name = 'value')
+# Melt for category
+usSetF <- melt(usExtract, measure.vars = 'category', variable.factor = FALSE,
+               variable.name = 'measure', value.name = 'value')
 
 # Table of summary statistics
 statsN <- usSetN[, .(Mean = mean(value, na.rm = TRUE),
@@ -200,88 +205,111 @@ As expected, the number of tags is orders of magnitude less than the rating or
 comment variables. On average there are more likes than comments and more
 comments then dislikes, but all three exhibit symmetric Gaussian-like behavior.
 
-### Factor Predictors
+### Categories
 While tabular representation of factor predictors is difficult, a distribution
-of factors by value may prove informative. It is clear from the graphs below
+of videos by categories may prove informative. It is clear from the graphs below
 that interests vary by category. `Entertainment` seems to be the most common in
 the US with `Music` coming in second. 
 
-```{r factorPlot1, fig.height=4.5, fig.width=8}
+```{r catPlot, fig.height=4.5, fig.width=8}
 ggplot(usSetF[measure == 'category'], aes(y = value)) +
   geom_bar() +
   ggtitle("Distribution by Category") +
   scale_x_continuous(labels = comma)
 ```
 
-```{r factorPlot2, fig.height=3, fig.width=8}
-ggplot(usSetF[measure != 'category'], aes(x = value, fill = measure)) +
-  geom_bar(position = 'dodge2') +
-  ggtitle("Country and Global Mean Views Exceedence") +
+## Feature Selection & Engineering
+We will consider the relationship between `views` and the numerical predictors
+of `likes`, `dislikes`, `comments`, and `tags`. We will also consider the
+`category`, whether or not comments or ratings were disabled and, if there was
+an error with the video.
+
+```{r likeDislikeCheck}
+ldOutlier <- usExtract[!rtgDisabled & dislikes == 0 & likes == 0]
+ldOn <- dim(ldOutlier)[[1]]
+```
+
+We will add two features. The first is `disp`: the disproportion between the
+likes and dislikes. To minimize division by 0 errors, it is defined as follows:
+\[
+disp =\begin{cases}
+\mathrm{ratings\;enabled}\quad\frac{\min(likes, dislikes)}{\max(likes, dislikes)}\\
+\mathrm{ratings\;disabled}\quad 1
+\end{cases}
+\]
+This constrains the ratio to \([0 \leq disp \leq 1]\) with a maximum when the
+two are equal, and division by 0 only when both are 0. This usually occurs when
+ratings are disabled. There is only `r ldOn` case out of the `r nobsUSExt`
+observations where the ratings were not disabled, yet there are neither likes
+nor dislikes. As this is a distinct incongruity for YouTube, we will remove that
+one observation from the data. When ratings are disabled, perforce there is no
+disparity so the ratio will be set to 1.
+
+The second is `exceedMean`. This will be a factor if the views for the video
+are greater than the *mean* views for all of the extracted data set. This will
+also indicate the skewness of the data. Were it symmetrical, and we know it is
+not from the graphs above, the mean should be near the median and this factor
+should be close to equal for both 0 and 1. 
+
+```{r addFeatures}
+# Remove the outlier
+usExtract <- usExtract[!(!rtgDisabled & dislikes == 0 & likes == 0)]
+
+# Precaclulate the mean views
+usMean <- mean(usExtract$views)
+
+# Add the engineered feature
+usExtract[, `:=`(disp = ifelse(rtgDisabled, 1,
+                               pmin(likes, dislikes) / pmax(likes, dislikes)),
+                 exceedMean = factor(ifelse(views > usMean, 1, 0),
+                                     levels = c(0, 1), labels = c(0, 1)))]
+# Melt for exceedMean
+usSetF <- melt(usExtract, measure.vars = 'exceedMean', variable.factor = FALSE,
+               variable.name = 'measure', value.name = 'value')
+
+# Plot the exceedMean variable
+ggplot(usSetF[measure == 'exceedMean'], aes(x = value)) +
+  geom_bar() +
+  ggtitle("Proportion Above and Below Mean") +
   scale_y_continuous(labels = comma)
 ```
 
 As with many events which follow the Pareto rule, most of the views are 
 attributable to a minority of the videos, as seen by the 0/1 disparity.
 
-## Feature Engineering & Selection
-Since we are not factoring in time, it is incorrect to use all the observations.
-Therefore, we will extract the latest observation by video by country and use
-this subset.
-
-```{r subsetExtraction}
-# Select the row numbers of the first entry of the latest trending date by title
-# and by country. There are 34 duplicates. Use this as our restricted data set
-# corresponding to the most recent view count. The inner set of brackets gets
-# the row number (called V1) and the outer set is a simple subset by those row
-# numbers.
-usExtract <- us_set[
-  us_set[, .I[which.max(views)], by = c('title')]$V1
-  ]
-```
-
-We will consider the relationship between `views` and the numerical predictors
-of `likes`, `dislikes`, `comments`, and `tags`. We will also consider the
-`category`, whether or not comments or ratings were disabled and, if there was
-an error with the video.
-
-A feature that we will also consider is `lkratio`: the ratio of likes to
-dislikes. This will help ascertain if it is the magnitude or the preponderance
-which has a greater effect. As there may be some rare videos with no dislikes,
-the ratios will be set to 1. The variable `unan`, short for unanimous, will
-reflect that some videos have likes but no dislikes, to balance the ratio of 1
-which should have been `NaN`, a division by 0 error.
-
-```{r addFeatures}
-usExtract[, `:=`(lkratio = ifelse(dislikes == 0, 1, likes / dislikes),
-                 unan = ifelse(dislikes == 0 & likes > 0, TRUE, FALSE))]
-
-modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
-                   comments_disabled + ratings_disabled +
-                   video_error_or_removed + lkratio + unan,
-                   data = usExtract, fullRank = TRUE)
-modMat <- predict(modDum, usExtract)
-```
-
 ## Model Building & Interpretation
 We will first separate 20% of the data as a true holdout set. It is on this data
 that our models will be compared. We will train models on the remaining 80% of
 the data.
 
-```{r holdOut}
+```{r holdout}
+# Create seen and hidden sets
 set.seed(617)
 seenIDX <- createDataPartition(usExtract$views, p = 0.8)$Resample1
-seenX <- modMat[seenIDX, ]
-seenY <- usExtract$views[seenIDX]
-hideX <- as.data.frame(modMat[-seenIDX, ])
-hideY <- usExtract$views[-seenIDX]
+seenSet <- usExtract[seenIDX, ]
+hideSet <- usExtract[-seenIDX, ]
 ```
 
 ### Simple Linear Regression
 Linear regression may be the best known algorithm used when analyzing a
 continuous numeric outcome. It searches for a linear relationship of the
 predictors that minimizes the squared error between the "predictor" function and
-the observations [@Sheather2009AMA]. This model will engage in stepwise feature
-selection using the AIC as the optimization metric.
+the observations [@Sheather2009AMA].
+
+This model will start with the numeric and logical features and the engineered
+disparity ratio. It will not use the exceeding mean indicator, as that is
+generated from the target variable, and it is felt it will distort the
+prediction. It will then proceed through feature selection using the AIC as the
+optimization metric.
+
+```{r dummyVarsAA}
+# Create dummy Variables. These will be used for the next three models
+modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
+                   cmtDisabled + rtgDisabled + vidError + disp,
+                   data = seenSet, fullRank = TRUE)
+seenX <- predict(modDum, seenSet)
+seenY <- seenSet$views
+```
 
 ```{r lm1Train}
 # Using stepAIC means no cross-validation. Train on entire dataset.
@@ -364,13 +392,14 @@ Instead of using AIC to select features, one can make use of penalized
 regression. Using an \(L_1\) penalty is the underpinnings of Lasso regression,
 which can perform feature selection. Using a squared error term, \(L_2\), is at
 the heart of ridge regression [@HTF2009TEo]. Using both methods together is
-called the elastic net [@ZH2005RaV]. To tune the hyperparameters, which includes
-the weighting between Lasso and Ridge, we will use 10-fold cross-validation.
+called the elastic net [@ZH2005RaV; ZH2020eEN]. To tune the hyperparameters,
+which includes the weighting between Lasso and Ridge, we will use 10-fold
+cross-validation.
 
 ```{r lm3Train}
 trC <- trainControl(method = 'cv', number = 10L)
-tG <- expand.grid(fraction = seq(0.8, 1, 0.001),
-                  lambda = seq(0, 0.02, 0.001))
+tG <- expand.grid(fraction = seq(0.85, 1, 0.001),
+                  lambda = seq(0.01, 0.025, 0.001))
 set.seed(181)
 lm3 <- train(x = seenX, y = seenY,
              method = 'enet', trControl = trC, tuneGrid = tG)
@@ -403,6 +432,11 @@ Conflict seems to be good for Youtubers!
 ## Model Evaluation
 
 ```{r modTest}
+tstDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
+                   cmtDisabled + rtgDisabled + vidError + disp,
+                   data = hideSet, fullRank = TRUE)
+hideX <- predict(tstDum, hideSet)
+hideY <- hideSet$views
 lm1P <- predict(lm1, newdata = hideX)
 lm2P <- predict(lm2, newdata = hideX)
 lm3P <- predict(lm3, newdata = hideX)
@@ -419,6 +453,10 @@ kable(compTable, digits = 3L, format.args = list(big.mark = ','),
 ```
 
 # Discussion & Conclusions
+The three models contain both intuitive and counter-intuitive results. As
+expected, videos with more ratings tend to have more views. However, as likes
+outnumber dislikes, that tends to reduce the number of views. Having a video
+witk
 
 # Appendix
 ## Statistical Appendix
@@ -445,23 +483,24 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r loadData}
 ```
+<!-- Data Exploration -->
 ```{r dataPrep}
 ```
 ```{r numLogDensities}
 ```
-```{r factorPlot1}
+```{r catPlot}
 ```
-```{r factorPlot2}
-```
-
-<!-- Feature Engineering & Selection -->
 ```{r subsetExtraction}
+```
+```{r likeDislikeCheck}
 ```
 ```{r addFeatures}
 ```
 
 <!-- Model Building -->
-```{r holdOut}
+```{r holdout}
+```
+```{r dummyVarsAA}
 ```
 ```{r lm1Train}
 ```
