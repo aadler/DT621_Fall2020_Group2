@@ -249,11 +249,15 @@ neither likes nor dislikes. As this is a distinct incongruity for YouTube, we
 will remove that one observation from the data. When ratings are disabled,
 perforce there is no disparity so the ratio will be set to 1.
 
-The second is `exceedMean`. This will be a factor if the views for the video
-are greater than the *mean* views for all of the extracted data set. This will
-also indicate the skewness of the data. Were it symmetrical, and we know it is
-not from the graphs above, the mean should be near the median and this factor
-should be close to equal for both 0 and 1. 
+<!-- The second is `exceedMean`. This will be a factor if the views for the video -->
+<!-- are greater than the *mean* views for all of the extracted data set. This will -->
+<!-- also indicate the skewness of the data. Were it symmetrical, and we know it is -->
+<!-- not from the graphs above, the mean should be near the median and this factor -->
+<!-- should be close to equal for both 0 and 1.  -->
+
+The second is `engagement`. This will be the ratio of comments to sum of likes and 
+dislikes, which should give us some measure of comments to ratings. We will use a
+similar approach as `balance` in terms of constraining the interval to \([0,1])\). 
 
 ```{r addFeatures}
 # Remove the outlier
@@ -265,32 +269,42 @@ usMean <- mean(usExtract$views)
 # Add the engineered feature
 usExtract[, `:=`(balance = ifelse(rtgDisabled, 1,
                                pmin(likes, dislikes) / pmax(likes, dislikes)),
-                 exceedMean = factor(ifelse(views > usMean, 1, 0),
-                                     levels = c(0, 1), labels = c(0, 1)))]
+                 engagement = ifelse(rtgDisabled, 1, 
+                                     comments / sum(likes, dislikes)))]
+                 # exceedMean = factor(ifelse(views > usMean, 1, 0),
+                 #                     levels = c(0, 1), labels = c(0, 1)))
+          
+
 ```
 ```{r plotBalance, fig.height=4, fig.width=8}
 ggplot(usExtract[, .(balance)], aes(x = balance)) +
   geom_density() +
   ggtitle("Distribution of Balance")
+
+ggplot(usExtract[, .(engagement)], aes(x = engagement)) +
+  geom_density() +
+  scale_x_log10() +
+  ggtitle("Distribution of Engagement Log Scale")
+
 ```
 
 It's pretty clear from the distribution of `balance` that, at least for videos
 viewed in the US, there is a healthy dose of disagreement!
 
-```{r plotExceedMean, fig.height=4, fig.width=8}
-# Melt for exceedMean
-usSetF <- melt(usExtract, measure.vars = 'exceedMean', variable.factor = FALSE,
-               variable.name = 'measure', value.name = 'value')
+<!-- ```{r plotExceedMean, fig.height=4, fig.width=8} -->
+<!-- # Melt for exceedMean -->
+<!-- usSetF <- melt(usExtract, measure.vars = 'exceedMean', variable.factor = FALSE, -->
+<!--                variable.name = 'measure', value.name = 'value') -->
 
-# Plot the exceedMean variable
-ggplot(usSetF[measure == 'exceedMean'], aes(x = value)) +
-  geom_bar() +
-  ggtitle("Proportion Above and Below Mean") +
-  scale_y_continuous(labels = comma)
-```
+<!-- # Plot the exceedMean variable -->
+<!-- ggplot(usSetF[measure == 'exceedMean'], aes(x = value)) + -->
+<!--   geom_bar() + -->
+<!--   ggtitle("Proportion Above and Below Mean") + -->
+<!--   scale_y_continuous(labels = comma) -->
+<!-- ``` -->
 
-As with many events which follow the Pareto rule, most of the views are 
-attributable to a minority of the videos, as seen by the 0/1 disparity.
+<!-- As with many events which follow the Pareto rule, most of the views are  -->
+<!-- attributable to a minority of the videos, as seen by the 0/1 disparity. -->
 
 ## Model Building & Interpretation
 We will first separate 20% of the data as a true holdout set. It is on this data
@@ -320,7 +334,7 @@ proceed through feature selection using the AIC as the optimization metric.
 ```{r dummyVarsAA}
 # Create dummy Variables. These will be used for the next three models
 modDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
-                   cmtDisabled + rtgDisabled + vidError + balance,
+                   cmtDisabled + rtgDisabled + vidError + balance + engagement,
                    data = seenSet, fullRank = TRUE)
 seenX <- predict(modDum, seenSet)
 seenY <- seenSet$views
@@ -367,18 +381,18 @@ What may be most interesting is that the disparity ratio indicator us a very
 powerful and significant indicator. Conflict seems to be good for Youtube
 videos. The more a video is argued over, the more views it seems to get!
 
-### Generalized Linear Model: Gaussian Errors & Log Link
+### Generalized Linear Model: Gaussian and Poisson Errors with Log Link
 The generalized linear model (GLM) is an extension of the simple linear model,
 but the errors can be distributed per any member of the exponential family and
 the relationship between some function of the predictors---called the link---and
 the mean needs to be linear, not that the mean itself must be linear in the
 predictors [@Faraway2006EtL]. 
 
-The model under consideration here assumes a Gaussian distribution of the
-errors, but a multiplicative relationship between the mean and the predictors.
-This is expressed by using a log link function. This is **not** the canonical
-link function for the Gaussian GLM, but as we are using numerical methods there
-is no issue.
+The models under consideration here assume either a Poisson or Gaussian 
+distribution of the errors, but a multiplicative relationship between the
+mean and the predictors. This is expressed by using a log link function. 
+This is **not** the canonical link function for the GLM distributions,
+but as we are using numerical methods there is no issue.
 
 This approach *appears* similar to that of the common technique of performing a
 standard linear regression on the logs of the observations, but is different. As
@@ -393,18 +407,35 @@ lm2 <- train(x = seenX, y = seenY, family = gaussian(link = 'log'),
              trControl = trC)
 ```
 
+
+```{r lm3Train_poi}
+set.seed(9450)
+lm3_test<- train(x = seenX, y = seenY, family = poisson(link='log'),
+            method = 'glmStepAIC', direction = 'both', trace = 0,
+            trControl = trC)
+```
+
 \footnotesize
-```{r lm2Table}
-kable(summary(lm2$finalModel)$coefficients,
-      caption = "Model 3 Linear Regression Output",
+```{r poi_coeff}
+kable(summary(lm3_test$finalModel)$coefficients,
+      caption = "Model 3 (Poisson) Linear Regression Output",
       digts = 3L, format.args = list(big.mark = ','))
 ```
 \normalsize
 
-This model has more predictors than does the simple Gaussian (G)LM. Moreover,
+
+\footnotesize
+```{r lm2Table}
+kable(summary(lm2$finalModel)$coefficients,
+      caption = "Model 3 (Gaussian) Linear Regression Output",
+      digts = 3L, format.args = list(big.mark = ','))
+```
+\normalsize
+
+These models have more predictors than the simple Gaussian (G)LM. Moreover,
 the signs are different from the simple LM. The very fact that
-`Nonprofits & Activism` has a positive coefficient should raise concerns. This
-model is probably a poor one.
+`Nonprofits & Activism` has a positive coefficient should raise concerns. These
+models are probably poor ones.
 
 ### ElasticNet: Penalized Regression
 Instead of using AIC to select features, one can make use of penalized
@@ -454,7 +485,7 @@ views. Conflict seems to be good for YouTubers!
 ```{r modTest}
 # Process the hidden set
 tstDum <- dummyVars(views ~ likes + dislikes + comments + tags + category +
-                   cmtDisabled + rtgDisabled + vidError + balance,
+                   cmtDisabled + rtgDisabled + vidError + balance + engagement,
                    data = hideSet, fullRank = TRUE)
 hideX <- predict(tstDum, hideSet)
 hideY <- hideSet$views
@@ -463,16 +494,17 @@ hideY <- hideSet$views
 lm1P <- predict(lm1, newdata = hideX)
 lm2P <- predict(lm2, newdata = hideX)
 lm3P <- predict(lm3, newdata = hideX)
-
+lm3_testP <- predict(lm3_test, newdata = hideX)
 # Compare the results
-compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet'),
+compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet', 'GLM: Poisson+Log '),
                         RMSE = c(RMSE(lm1P, hideY), RMSE(lm2P, hideY),
-                                 RMSE(lm3P, hideY)),
+                                 RMSE(lm3P, hideY), RMSE(lm3_testP, hideY)),
                         R2 = c(R2(lm1P, hideY, formula = 'traditional'),
                                R2(lm2P, hideY, formula = 'traditional'),
-                               R2(lm3P, hideY, formula = 'traditional')),
+                               R2(lm3P, hideY, formula = 'traditional'),
+                               R2(lm3_testP, hideY, formula = 'traditional')),
                         MAE = c(MAE(lm1P, hideY), MAE(lm2P, hideY),
-                                MAE(lm3P, hideY)))
+                                MAE(lm3P, hideY), MAE(lm3_testP, hideY)))
 kable(compTable, digits = 3L, format.args = list(big.mark = ','),
       caption = "Model Performance on Test Set")
 ```
