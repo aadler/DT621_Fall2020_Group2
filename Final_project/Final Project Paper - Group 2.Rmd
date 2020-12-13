@@ -247,32 +247,24 @@ neither likes nor dislikes. As this is a distinct incongruity for YouTube, we
 will remove that one observation from the data. When ratings are disabled,
 perforce there is no disparity so the ratio will be set to 1.
 
-<!-- The second is `exceedMean`. This will be a factor if the views for the video -->
-<!-- are greater than the *mean* views for all of the extracted data set. This will -->
-<!-- also indicate the skewness of the data. Were it symmetrical, and we know it is -->
-<!-- not from the graphs above, the mean should be near the median and this factor -->
-<!-- should be close to equal for both 0 and 1.  -->
-
-The second is `engagement`. This will be the ratio of comments to sum of likes and 
-dislikes, which should give us some measure of comments to ratings. We will use a
-similar approach as `balance` in terms of constraining the interval to \([0,1])\). 
+The second is `engagement`. This will be the ratio of comments to sum of likes
+and dislikes, which should give us some measure of comments to ratings. We will
+use a similar approach as `balance` in terms of constraining the interval to
+\([0,1])\). 
 
 ```{r addFeatures}
 # Remove the outlier
 usExtract <- usExtract[!(!rtgDisabled & dislikes == 0 & likes == 0)]
 
-# Precaclulate the mean views
-usMean <- mean(usExtract$views)
-
 # Add the engineered feature
 usExtract[, `:=`(balance = ifelse(rtgDisabled, 1,
                                pmin(likes, dislikes) / pmax(likes, dislikes)),
                  engagement = ifelse(rtgDisabled, 1, 
-                                     comments / sum(likes, dislikes)))]
-                 # exceedMean = factor(ifelse(views > usMean, 1, 0),
-                 #                     levels = c(0, 1), labels = c(0, 1)))
-          
-
+                                     comments / (likes + dislikes)))]
+engageMode <- prettyNum(density(usExtract$engagement, kernel = 'ep')$x[
+  which.max(density(usExtract$engagement, kernel = 'ep')$y)], digits = 4L)
+engageMean <- prettyNum(mean(usExtract$engagement), digits = 4L)
+engageMax <- prettyNum(max(usExtract$engagement), digits = 4L)
 ```
 ```{r plotBalance, fig.height=4, fig.width=8}
 ggplot(usExtract[, .(balance)], aes(x = balance)) +
@@ -281,28 +273,15 @@ ggplot(usExtract[, .(balance)], aes(x = balance)) +
 
 ggplot(usExtract[, .(engagement)], aes(x = engagement)) +
   geom_density() +
-  scale_x_log10() +
-  ggtitle("Distribution of Engagement Log Scale")
+  ggtitle("Distribution of Engagement")
 
 ```
 
 It's pretty clear from the distribution of `balance` that, at least for videos
-viewed in the US, there is a healthy dose of disagreement!
-
-<!-- ```{r plotExceedMean, fig.height=4, fig.width=8} -->
-<!-- # Melt for exceedMean -->
-<!-- usSetF <- melt(usExtract, measure.vars = 'exceedMean', variable.factor = FALSE, -->
-<!--                variable.name = 'measure', value.name = 'value') -->
-
-<!-- # Plot the exceedMean variable -->
-<!-- ggplot(usSetF[measure == 'exceedMean'], aes(x = value)) + -->
-<!--   geom_bar() + -->
-<!--   ggtitle("Proportion Above and Below Mean") + -->
-<!--   scale_y_continuous(labels = comma) -->
-<!-- ``` -->
-
-<!-- As with many events which follow the Pareto rule, most of the views are  -->
-<!-- attributable to a minority of the videos, as seen by the 0/1 disparity. -->
+viewed in the US, there is a healthy dose of disagreement, as its mode is much
+closer to 0 than 1. Similarly, `engagement` exhibits right-skewed behavior, with
+a mean of `r engageMean` and a mode at `r engageMode`, yet a maximum of
+`r engageMax`.
 
 ## Model Building & Interpretation
 We will first separate 20% of the data as a true holdout set. It is on this data
@@ -375,8 +354,8 @@ When ratings are disabled, there is a bump to views. This is probably because
 the intercept is artificially low due to the predictive power of `likes` and
 `dislikes`. To balance that when there are none needs a big boost.
 
-What may be most interesting is that the disparity ratio indicator us a very
-powerful and significant indicator. Conflict seems to be good for Youtube
+What may be most interesting is that the disparity and engagement ratios are
+powerful and significant indicators. Conflict seems to be good for Youtube
 videos. The more a video is argued over, the more views it seems to get!
 
 ### Generalized Linear Model: Gaussian and Poisson Errors with Log Link
@@ -392,46 +371,41 @@ mean and the predictors. This is expressed by using a log link function.
 This is **not** the canonical link function for the GLM distributions,
 but as we are using numerical methods there is no issue.
 
-This approach *appears* similar to that of the common technique of performing a
-standard linear regression on the logs of the observations, but is different. As
-per [@Gelman2006Lta], one approach *"…log transforms observed values, while the*
-*second one log transforms the expected value.…the key difference being the*
-*relation between the predicted value and the variance."*
+The first approach *appears* similar to that of the common technique of
+performing a standard linear regression on the logs of the observations, but it
+is different. As per [@Gelman2006Lta], one approach *"…log transforms observed*
+*values, while the second one log transforms the expected value.…the key*
+*difference being the relation between the predicted value and the variance."*
 
-```{r lm2Train}
+The second approach is the classic Poisson regression.
+
+```{r lm2aTrain}
 set.seed(181)
-lm2 <- train(x = seenX, y = seenY, family = gaussian(link = 'log'),
+lm2a <- train(x = seenX, y = seenY, family = gaussian(link = 'log'),
              method = 'glmStepAIC', direction = 'both', trace = 0,
              trControl = trC)
 ```
 
-
-```{r lm3Train_poi}
-set.seed(9450)
-lm3_test<- train(x = seenX, y = seenY, family = poisson(link='log'),
+```{r lm2b}
+set.seed(181)
+lm2b<- train(x = seenX, y = seenY, family = poisson(link='log'),
             method = 'glmStepAIC', direction = 'both', trace = 0,
             trControl = trC)
 ```
 
 \footnotesize
-```{r poi_coeff}
-kable(summary(lm3_test$finalModel)$coefficients,
-      caption = "Model 3 (Poisson) Linear Regression Output",
+```{r lm2Tables}
+kable(summary(lm2a$finalModel)$coefficients,
+      caption = "Model 3a (Gaussian) Linear Regression Output",
+      digts = 3L, format.args = list(big.mark = ','))
+kable(summary(lm2b$finalModel)$coefficients,
+      caption = "Model 3b (Poisson) Linear Regression Output",
       digts = 3L, format.args = list(big.mark = ','))
 ```
 \normalsize
 
-
-\footnotesize
-```{r lm2Table}
-kable(summary(lm2$finalModel)$coefficients,
-      caption = "Model 3 (Gaussian) Linear Regression Output",
-      digts = 3L, format.args = list(big.mark = ','))
-```
-\normalsize
-
-These models have more predictors than the simple Gaussian (G)LM. Moreover,
-the signs are different from the simple LM. The very fact that
+These models have more predictors than the simple Gaussian (G)LM. Moreover, the
+signs are different from the simple LM. The very fact that
 `Nonprofits & Activism` has a positive coefficient should raise concerns. These
 models are probably poor ones.
 
@@ -475,8 +449,8 @@ with views and `comments` is negatively correlated. A few more categories join
 `Film & Animation` as contributing to excess views over the baseline
 `Entertainment`. But `Nonprofits & Activism` has the largest factor by far, and
 it is negative, which stands in contrast to the second model. Lastly, having a
-higher balance---ratio of likes to dislikes closer to 1---tends to increase
-views. Conflict seems to be good for YouTubers!
+higher `balance`---ratio of likes to dislikes closer to 1--- or a higher
+`engagement` tends to increase views. Conflict seems to be good for YouTubers!
 
 ## Model Evaluation
 
@@ -490,19 +464,20 @@ hideY <- hideSet$views
 
 # Predict using the models
 lm1P <- predict(lm1, newdata = hideX)
-lm2P <- predict(lm2, newdata = hideX)
+lm2aP <- predict(lm2a, newdata = hideX)
+lm2bP <- predict(lm2b, newdata = hideX)
 lm3P <- predict(lm3, newdata = hideX)
-lm3_testP <- predict(lm3_test, newdata = hideX)
 # Compare the results
-compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'ElasticNet', 'GLM: Poisson+Log '),
-                        RMSE = c(RMSE(lm1P, hideY), RMSE(lm2P, hideY),
-                                 RMSE(lm3P, hideY), RMSE(lm3_testP, hideY)),
+compTable <- data.table(Model = c('LM', 'GLM: Gauss+Log', 'GLM: Poisson+Log',
+                                  'ElasticNet'),
+                        RMSE = c(RMSE(lm1P, hideY), RMSE(lm2aP, hideY),
+                                 RMSE(lm2bP, hideY), RMSE(lm3P, hideY)),
                         R2 = c(R2(lm1P, hideY, formula = 'traditional'),
-                               R2(lm2P, hideY, formula = 'traditional'),
-                               R2(lm3P, hideY, formula = 'traditional'),
-                               R2(lm3_testP, hideY, formula = 'traditional')),
-                        MAE = c(MAE(lm1P, hideY), MAE(lm2P, hideY),
-                                MAE(lm3P, hideY), MAE(lm3_testP, hideY)))
+                               R2(lm2aP, hideY, formula = 'traditional'),
+                               R2(lm2bP, hideY, formula = 'traditional'),
+                               R2(lm3P, hideY, formula = 'traditional')),
+                        MAE = c(MAE(lm1P, hideY), MAE(lm2aP, hideY),
+                                MAE(lm2bP, hideY), MAE(lm3P, hideY)))
 kable(compTable, digits = 3L, format.args = list(big.mark = ','),
       caption = "Model Performance on Test Set")
 ```
@@ -526,6 +501,7 @@ for prospective YouTubers, it would be:
   * Stay **away** from activism. 
   * Talk about films or comics. This probably includes the anime and manga
   phenomena.
+  * Talking about cars is also good.
   * Having more tags is better than having fewer.
 
 The main limitation of this analysis is that the linear model, even with
@@ -567,14 +543,22 @@ kable(statsN, digits = 2, caption = "Table of Numeric Predictors",
 ggplot(varImp(lm1)) + ggtitle('Variable Importance: Model 1')
 ```
 
-### Variable Importance: Model 2
+### Variable Importance: Model 2a
 
-```{r lm2VI}
+```{r lm2aVI}
 # Model 2: VarImp 
-ggplot(varImp(lm2)) + ggtitle('Variable Importance: Model 2')
+ggplot(varImp(lm2a)) + ggtitle('Variable Importance: Model 2a')
+```
+
+### Variable Importance: Model 2b
+
+```{r lm2bVI}
+# Model 2: VarImp 
+ggplot(varImp(lm2b)) + ggtitle('Variable Importance: Model 2b')
 ```
 
 ### Variable Importance: Model 3
+
 ```{r lm3VI}
 # Model 3: VarImp 
 ggplot(varImp(lm3)) + ggtitle('Variable Importance: Model 3')
@@ -626,9 +610,12 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r lm1Table}
 ```
-```{r lm2Train}
+```{r lm2aTrain}
 ```
-```{r lm2Table}
+```{r lm2bTrain}
+```
+
+```{r lm2Tables}
 ```
 ```{r lm3Train}
 ```
@@ -642,9 +629,11 @@ knitr::opts_chunk$set(echo=TRUE, eval=FALSE)
 ```
 ```{r lm1VI}
 ```
-```{r lm2VI}
+```{r lm2aVI}
 ```
-```{r lm2VI}
+```{r lm2bVI}
+```
+```{r lm3VI}
 ```
 ```{r lm3Plot}
 ```
