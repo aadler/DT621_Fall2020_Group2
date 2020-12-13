@@ -190,9 +190,7 @@ distribution.
 
 ### Numeric Predictors
 For numeric predictors, we are using the number of `likes`, `dislikes`, `tags`,
-and `comments`. We may also consider the country of viewing as well. From the 
-There is not that much difference in the distribution of the numeric predictors
-between the countries where people view. 
+and `comments`. 
 
 ```{r numLogDensities, fig.height=4.5, fig.width=8}
 ggplot(usSetN[measure != 'views'], aes(x = value, color = measure)) +
@@ -214,7 +212,7 @@ the US with `Music` coming in second.
 ```{r catPlot, fig.height=4.5, fig.width=8}
 ggplot(usSetF[measure == 'category'], aes(y = value)) +
   geom_bar() +
-  ggtitle("Distribution by Category") +
+  ggtitle("Distribution by Category: United States") +
   scale_x_continuous(labels = comma)
 ```
 
